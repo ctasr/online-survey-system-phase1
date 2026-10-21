@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}{{ survey.title }} · 在线问卷系统{% endblock %}
+{% block main_class %}content-page response-page{% endblock %}
+{% block content %}
+  {% if preview %}
+    <div class="preview-toolbar"><a class="preview-back-link" data-discard-changes href="{{ url_for('surveys.survey_detail', survey_id=survey_id) }}">← 返回问卷</a><span>预览模式 · 答案不会保存</span></div>
+  {% endif %}
+  <h1>{{ survey.title }}</h1>
+  {% if survey.description %}<p class="description">{{ survey.description }}</p>{% endif %}
+  {% if unavailable %}
+    <p>这份问卷已关闭或已过截止时间，无法填写。</p>
+  {% elif already_submitted %}
+    <p>你已提交过这份问卷，不能重复填写。</p>
+  {% else %}
+    {% if error and not error_question_id %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+    <form method="post" class="response-form" novalidate data-survey-flow data-warn-unsaved data-preview="{{ 'true' if preview else 'false' }}" {% if not preview %}data-draft-url="{{ url_for('surveys.response_draft', slug=survey.slug) }}"{% endif %} data-assess-url="{{ url_for('surveys.preview_assess', survey_id=survey_id) if preview else url_for('surveys.public_assess', slug=survey.slug) }}" data-error-question="{{ error_question_id or '' }}" data-initial-error="{{ error if error_question_id else '' }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="question_snapshot" value="{{ question_snapshot }}">
+      {% if not preview %}<p class="draft-state" data-draft-state role="status" aria-live="polite"></p>{% endif %}
+      {% if can_confirm_unchanged is defined and can_confirm_unchanged %}
+        <button type="button" class="primary-button" data-direct-submit>确认并提交已保留的答案</button>
+      {% endif %}
+      {% if survey.allow_anonymous and not preview %}
+        <label for="identity-mode">本次填写身份</label>
+        <select id="identity-mode" name="identity_mode">
+          <option value="anonymous" {% if form.get('identity_mode', 'anonymous') == 'anonymous' %}selected{% endif %}>匿名填写</option>
+          <option value="named" {% if form.get('identity_mode') == 'named' %}selected{% endif %}>使用账号填写</option>
+        </select>
+      {% endif %}
+      <div class="response-layout"><div class="response-questions">
+      {% for question in survey.questions %}
+        <section class="response-question" data-question-id="{{ question.id }}" role="group" aria-labelledby="question-title-{{ question.id }}">
+          <h2 class="response-question-title" id="question-title-{{ question.id }}"><span class="question-number">{{ question_label(loop.index) }}</span><span>{{ question.title }}</span>{% if not question.required %}<span class="optional-label">（选答）</span>{% endif %}</h2>
+          {% if changed_question_ids is defined and question.id in changed_question_ids %}<p class="error">此题已更新或新增，请重新作答。</p>{% endif %}
+          {% set key = 'q_' ~ question.id %}
+          {% if question.type == 'single_choice' %}
+            {% for option in question.options %}
+              <label class="answer-option"><input type="radio" name="{{ key }}" value="{{ option }}" {% if form.get(key) == option %}checked{% endif %}><span class="answer-option-label">{{ option_label(loop.index, option_style(survey)) }}.</span><span>{{ option }}</span></label>
+            {% endfor %}
+          {% elif question.type == 'multiple_choice' %}
+            {% for option in question.options %}
+              <label class="answer-option"><input type="checkbox" name="{{ key }}" value="{{ option }}" {% if option in form.getlist(key) %}checked{% endif %}><span class="answer-option-label">{{ option_label(loop.index, option_style(survey)) }}.</span><span>{{ option }}</span></label>
+            {% endfor %}
+            {% if question.exact_select is not none or question.min_select is not none or question.max_select is not none %}<p class="hint">{% if question.exact_select is not none %}请选择 {{ question.exact_select }} 项{% else %}{% if question.min_select is not none %}至少选 {{ question.min_select }} 项{% endif %}{% if question.min_select is not none and question.max_select is not none %}，{% endif %}{% if question.max_select is not none %}最多选 {{ question.max_select }} 项{% endif %}{% endif %}。</p>{% endif %}
+          {% elif question.type == 'text' %}
+            <textarea name="{{ key }}" rows="3" aria-label="{{ question.title }}">{{ form.get(key, '') }}</textarea>
+            {% if question.min_length is not none or question.max_length is not none %}<p class="hint">{% if question.min_length is not none %}至少填写 {{ question.min_length }} 字{% endif %}{% if question.min_length is not none and question.max_length is not none %}，{% endif %}{% if question.max_length is not none %}最多填写 {{ question.max_length }} 字{% endif %}。</p>{% endif %}
+          {% elif question.type == 'number' %}
+            <input name="{{ key }}" type="number" step="{{ '1' if question.integer_only else 'any' }}" value="{{ form.get(key, '') }}" aria-label="{{ question.title }}">
+            {% if question.integer_only or question.min_value is not none or question.max_value is not none %}<p class="hint">{% if question.integer_only %}请填写整数{% endif %}{% if question.integer_only and (question.min_value is not none or question.max_value is not none) %}，{% endif %}{% if question.min_value is not none %}不能小于 {{ question.min_value }}{% endif %}{% if question.min_value is not none and question.max_value is not none %}，{% endif %}{% if question.max_value is not none %}不能大于 {{ question.max_value }}{% endif %}。</p>{% endif %}
+          {% endif %}
+          <p class="error question-error" data-question-error role="alert">{{ error if error_question_id == question.id else '' }}</p>
+        </section>
+      {% endfor %}
+      <nav class="response-page-controls" data-response-page-controls aria-label="填写分段导航" hidden><button type="button" data-response-prev>← 上一组</button><span data-response-page-status aria-live="polite"></span><button type="button" data-response-next>下一组 →</button></nav>
+      </div><aside class="response-overview" aria-label="题目总览"><div class="response-overview-inner"><h2>题目总览</h2><p data-flow-status aria-live="polite"></p><div class="answer-progress-track" role="progressbar" aria-label="必答题完成度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span data-progress-fill></span></div><button type="button" class="response-overview-toggle" data-overview-toggle aria-expanded="false">查看题目总览 ↓</button><nav class="question-overview-list" aria-label="跳转到题目">
+      {% for question in survey.questions %}<button type="button" class="question-overview-item" data-overview-question="{{ question.id }}" title="第 {{ question_label(loop.index) }} 题：{{ question.title }}" aria-label="第 {{ question_label(loop.index) }} 题，{{ question.title }}"><span class="overview-number">{{ question_label(loop.index) }}</span><span class="overview-state" data-overview-state>{{ '选答' if not question.required else '未答' }}</span></button>{% endfor %}
+      </nav></div></aside></div>
+      <p class="error" data-flow-error role="alert"></p>
+      <div class="flow-controls">
+        <a class="response-exit-link" data-exit-response href="{{ url_for('surveys.survey_detail', survey_id=survey_id) if preview else url_for('auth.dashboard') }}">{{ '返回问卷' if preview else '退出填写' }}</a>
+        <button type="submit" class="primary-button" data-flow-submit>{{ '完成预览' if preview else '提交答卷' }}</button>
+      </div>
+      <nav class="response-shortcuts" data-response-shortcuts aria-label="填写快捷操作" hidden>
+        <button type="button" data-shortcut-overview>题目总览</button>
+        <button type="button" data-shortcut-top>回到顶部</button>
+        <a data-exit-response href="{{ url_for('surveys.survey_detail', survey_id=survey_id) if preview else url_for('auth.dashboard') }}">{{ '返回问卷' if preview else '退出填写' }}</a>
+      </nav>
+    </form>
+  {% endif %}
+{% endblock %}

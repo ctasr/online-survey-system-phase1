@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}在线问卷系统{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='20261020') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='experience.css', v='20261020i') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='polish.css', v='20261021t') }}">
+  <script src="{{ url_for('static', filename='app.js', v='20261021n') }}" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <nav class="site-nav{{ ' is-authenticated' if g.user else ' is-guest' }}" aria-label="主导航">
+      <a class="site-brand" href="{{ url_for('auth.dashboard') if g.user else url_for('index') }}"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>问卷系统</a>
+      <div class="nav-links">
+        {% if g.user %}
+        <div class="nav-main-links">
+          <a class="nav-item{{ ' is-active' if request.endpoint == 'auth.dashboard' else '' }}" href="{{ url_for('auth.dashboard') }}" {% if request.endpoint == 'auth.dashboard' %}aria-current="page"{% endif %}>个人首页</a>
+          <a class="nav-item{{ ' is-active' if request.path.startswith('/surveys') else '' }}" href="{{ url_for('surveys.my_surveys') }}" {% if request.path.startswith('/surveys') %}aria-current="page"{% endif %}>我的问卷</a>
+          <a class="nav-item{{ ' is-active' if request.path.startswith('/responses') else '' }}" href="{{ url_for('surveys.my_responses') }}" {% if request.path.startswith('/responses') %}aria-current="page"{% endif %}>我的答卷</a>
+        </div>
+          <form class="nav-logout" action="{{ url_for('auth.logout') }}" method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="text-button">退出登录</button>
+          </form>
+        {% elif request.endpoint not in ('auth.login', 'auth.register') %}
+          <div class="nav-auth-links">
+            <a class="nav-login" href="{{ url_for('auth.login') }}">登录</a>
+            <a class="nav-register" href="{{ url_for('auth.register') }}">注册</a>
+          </div>
+        {% else %}
+          <a class="nav-back" href="{{ url_for('index') }}">返回首页</a>
+        {% endif %}
+      </div>
+    </nav>
+  </header>
+  <main class="{% block main_class %}{% endblock %}">
+    {% for category, message in get_flashed_messages(with_categories=true) %}
+      <p class="notice notice-{{ category }}" role="{{ 'alert' if category == 'error' else 'status' }}">{{ message }}</p>
+    {% endfor %}
+
+    {% block content %}{% endblock %}
+  </main>
+  <button type="button" class="page-back-top" data-page-back-top aria-label="回到顶部" hidden>↑ 回到顶部</button>
+  <dialog class="confirm-dialog" data-confirm-dialog aria-labelledby="confirm-title" aria-describedby="confirm-message">
+    <div class="confirm-dialog-content">
+      <h2 id="confirm-title" data-confirm-title></h2>
+      <p id="confirm-message" data-confirm-message></p>
+      <div class="confirm-dialog-actions">
+        <button type="button" class="confirm-cancel" data-confirm-cancel>取消</button>
+        <button type="button" class="confirm-proceed" data-confirm-proceed></button>
+      </div>
+    </div>
+  </dialog>
+</body>
+</html>

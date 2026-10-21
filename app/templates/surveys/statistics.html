@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}统计结果 · {{ survey.title }}{% endblock %}
+{% block main_class %}content-page statistics-page{% endblock %}
+{% block content %}
+  <p><a href="{{ url_for('surveys.survey_detail', survey_id=survey._id) }}">← 返回问卷</a></p>
+  <h1>{{ survey.title }}：统计结果</h1>
+  <div class="stat-overview">
+    <div><span>已提交答卷</span><strong>{{ response_count }}</strong></div>
+    <div><span>匿名提交</span><strong>{{ overview.anonymous }}</strong></div>
+    <div><span>账号提交</span><strong>{{ overview.named }}</strong></div>
+  </div>
+  <div class="statistics-account-link"><div><strong>查看账号答卷</strong><span>逐份查看账号提交的答案；匿名答卷不显示身份。</span></div><a class="secondary-button" href="{{ url_for('surveys.survey_account_responses', survey_id=survey._id) }}">查看账号答卷 →</a></div>
+  {% if overview.first_submission %}<p class="hint">首次提交：{{ local_time(overview.first_submission) }}；最近提交：{{ local_time(overview.last_submission) }}。</p>{% endif %}
+  <details class="statistics-notes"><summary>统计说明</summary>
+    <p>按答卷统计；同一账号多次提交时，每份答卷分别计入。</p>
+    <p>题目修改后，各版本分别统计；选项比例以该版本已回答的答卷为分母。</p>
+    {% if response_count > overview.anonymous + overview.named %}<p>无法分类的旧数据：{{ response_count - overview.anonymous - overview.named }} 份。</p>{% endif %}
+  </details>
+  <div class="statistics-toolbar">
+    <form method="get" action="{{ url_for('surveys.statistics', survey_id=survey._id) }}" class="statistics-search">
+      <input type="hidden" name="view" value="{{ view }}">
+      <label for="statistics-query">查找题目</label><input id="statistics-query" type="search" name="q" value="{{ query }}" placeholder="题号或题目内容">
+      <button type="submit">查找</button>{% if query %}<a href="{{ url_for('surveys.statistics', survey_id=survey._id, view=view) }}">清除</a>{% endif %}
+    </form>
+    <nav class="statistics-view-switch" aria-label="统计结果显示方式">
+      <a href="{{ url_for('surveys.statistics', survey_id=survey._id, view='table', q=query) }}"{% if view == 'table' %} aria-current="page"{% endif %}>表格总览</a>
+      <a href="{{ url_for('surveys.statistics', survey_id=survey._id, view='cards', q=query) }}"{% if view == 'cards' %} aria-current="page"{% endif %}>逐题详情</a>
+    </nav>
+  </div>
+  {% if total_questions %}<p class="statistics-range">显示 {{ (page - 1) * page_size + 1 }}–{{ [page * page_size, total_questions]|min }} / {{ total_questions }} 题{% if query %} · 共 {{ all_question_count }} 题{% endif %}</p>{% elif query %}<p class="filter-empty">没有找到符合条件的题目。</p>{% endif %}
+  {% if view == 'table' and current_results %}<div class="statistics-table-wrap"><table class="statistics-table">
+    <thead><tr><th scope="col">题号</th><th scope="col">题目</th><th scope="col">类型</th><th scope="col">已回答</th><th scope="col">结果概览</th><th scope="col" aria-label="操作"></th></tr></thead>
+    <tbody>{% for result in current_results %}<tr>
+      <td>{{ question_label(result.index) }}</td>
+      <th scope="row"><span title="{{ result.question.title }}">{{ result.question.title }}</span></th>
+      <td>{{ question_types[result.question.type] }}</td>
+      <td>{{ result.answered_count }}{% if not result.question.required %} / {{ result.reached_count }}{% endif %}</td>
+      <td><span title="{{ result.compact_summary }}">{{ result.compact_summary }}</span></td>
+      <td><a href="{{ url_for('surveys.question_statistics', survey_id=survey._id, question_id=result.question.id) }}">查看详情</a></td>
+    </tr>{% endfor %}</tbody>
+  </table></div>{% endif %}
+  {% if view == 'cards' %}{% for result in current_results %}
+    <div id="stat-{{ result.question.id }}">
+      {% include 'surveys/_question_statistics.html' %}
+    </div>
+  {% endfor %}{% endif %}
+  {% if page_count > 1 %}<nav class="statistics-pages" aria-label="统计结果分页">
+    {% if page > 1 %}<a href="{{ url_for('surveys.statistics', survey_id=survey._id, page=page - 1, view=view, q=query) }}">← 上一页</a>{% endif %}
+    <span>第 {{ page }} / {{ page_count }} 页</span>
+    {% if page < page_count %}<a href="{{ url_for('surveys.statistics', survey_id=survey._id, page=page + 1, view=view, q=query) }}">下一页 →</a>{% endif %}
+    <form method="get" action="{{ url_for('surveys.statistics', survey_id=survey._id) }}"><input type="hidden" name="view" value="{{ view }}"><input type="hidden" name="q" value="{{ query }}"><label>跳到第 <input type="number" name="page" min="1" max="{{ page_count }}" value="{{ page }}" aria-label="统计页码" required> 页</label><button type="submit">跳转</button></form>
+  </nav>{% endif %}
+  {% if historical_results %}
+    <details class="historical-statistics" id="historical-statistics" {% if request.args.get('hpage') %}open{% endif %}>
+      <summary>查看历史版本与已移除题目的统计（{{ historical_total }} 个版本）</summary>
+      {% for result in historical_results %}
+        {% include 'surveys/_question_statistics.html' %}
+      {% endfor %}
+      {% if historical_pages > 1 %}<nav class="statistics-pages" aria-label="历史版本分页"><span>第 {{ historical_page }} / {{ historical_pages }} 页</span>{% if historical_page > 1 %}<a href="{{ url_for('surveys.statistics', survey_id=survey._id, hpage=historical_page - 1, view=view, q=query, page=page) }}#historical-statistics">← 上一页</a>{% endif %}{% if historical_page < historical_pages %}<a href="{{ url_for('surveys.statistics', survey_id=survey._id, hpage=historical_page + 1, view=view, q=query, page=page) }}#historical-statistics">下一页 →</a>{% endif %}</nav>{% endif %}
+    </details>
+  {% endif %}
+{% endblock %}

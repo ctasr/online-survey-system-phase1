@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}提交成功 · {{ survey.title }}{% endblock %}
+{% block main_class %}content-page response-page completion-page{% endblock %}
+{% block content %}
+  <div class="completion-panel"><h1>提交成功</h1><p>“{{ survey.title }}”的答卷已保存。</p><div class="completion-actions"><a class="primary-link" href="{{ url_for('surveys.my_responses') }}">查看我的答卷</a>{% if can_repeat %}<a class="secondary-button" href="{{ url_for('surveys.public_survey', slug=survey.slug) }}">再填一次</a>{% endif %}<a class="completion-back" href="{{ url_for('auth.dashboard') }}">返回个人首页</a></div></div>
+{% endblock %}

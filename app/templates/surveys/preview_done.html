@@ -1,0 +1,6 @@
+{% extends "base.html" %}
+{% block title %}预览完成 · {{ survey.title }}{% endblock %}
+{% block main_class %}content-page response-page completion-page{% endblock %}
+{% block content %}
+  <div class="completion-panel"><h1>预览完成</h1><p>已走完填写流程，回答 {{ answered_count }} 道题。预览答案没有保存，也不会进入统计。</p><div class="completion-actions"><a class="primary-link" href="{{ url_for('surveys.survey_detail', survey_id=survey._id) }}">返回问卷编辑</a><a class="secondary-button" href="{{ url_for('surveys.preview_survey', survey_id=survey._id) }}">再预览一次</a></div></div>
+{% endblock %}

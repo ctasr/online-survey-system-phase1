@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}我的答卷 · 在线问卷系统{% endblock %}
+{% block main_class %}workspace-page responses-list-page{% endblock %}
+{% block content %}
+<div class="page-heading"><h1>我的答卷 <span class="count-badge">{{ total }}</span></h1></div>
+<form method="get" class="response-filters" data-response-filters><label>问卷名称 <input type="search" name="q" value="{{ title_query }}" placeholder="查找填写过的问卷"></label><label>提交日期 <input type="date" name="date" value="{{ date_input_value }}"></label><label class="date-filter-toggle"><input type="checkbox" data-date-filter-toggle {% if submitted_on %}checked{% endif %}>按日期筛选</label><button type="submit">查找</button>{% if title_query or submitted_on %}<a href="{{ url_for('surveys.my_responses') }}">清除筛选</a>{% endif %}</form>
+{% if responses %}
+<ul class="survey-list response-list">
+{% for response in responses %}
+  <li><div class="survey-list-main">
+    <a href="{{ url_for('surveys.response_detail', response_id=response._id) }}">{{ response.get('survey_title') or surveys.get(response.survey_id, {}).get('title', '问卷已不可用') }}</a>
+    <small>{{ local_time(response.submitted_at) }} 提交 · {{ '匿名填写' if response.respondent_id is none else '账号填写' }}</small>
+  </div><a class="secondary-button" href="{{ url_for('surveys.response_detail', response_id=response._id) }}">查看答卷 →</a></li>
+{% endfor %}
+</ul>
+{% if pages > 1 %}<nav class="statistics-pages" aria-label="答卷列表分页">{% if page > 1 %}<a href="{{ url_for('surveys.my_responses', page=page-1, q=title_query, date=submitted_on) }}">← 上一页</a>{% endif %}<span>第 {{ page }} / {{ pages }} 页</span>{% if page < pages %}<a href="{{ url_for('surveys.my_responses', page=page+1, q=title_query, date=submitted_on) }}">下一页 →</a>{% endif %}<form method="get" action="{{ url_for('surveys.my_responses') }}"><input type="hidden" name="q" value="{{ title_query }}"><input type="hidden" name="date" value="{{ submitted_on }}"><label>跳到第 <input type="number" name="page" min="1" max="{{ pages }}" value="{{ page }}" aria-label="答卷列表页码" required> 页</label><button type="submit">跳转</button></form></nav>{% endif %}
+{% else %}<div class="empty-state responses-empty"><span class="responses-empty-icon" aria-hidden="true"></span><h2>{{ '没有找到符合条件的答卷' if title_query or submitted_on else '还没有答卷' }}</h2><p>{{ '试试其他名称或日期。' if title_query or submitted_on else '填写并提交问卷后，可在这里查看自己的回答。' }}</p><a href="{{ url_for('surveys.my_responses') if title_query or submitted_on else url_for('auth.dashboard') }}">{{ '清除筛选' if title_query or submitted_on else '返回个人首页' }} <span aria-hidden="true">→</span></a></div>{% endif %}
+{% endblock %}

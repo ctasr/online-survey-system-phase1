@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}编辑问卷信息 · {{ survey.title }}{% endblock %}
+{% block main_class %}workspace-page survey-form-page survey-edit-page{% endblock %}
+{% block content %}
+  <div class="survey-edit-heading">
+    <a class="survey-edit-back" href="{{ url_for('surveys.survey_detail', survey_id=survey._id) }}">← 返回问卷</a>
+    <div class="survey-edit-heading-row">
+      <div>
+        <span class="survey-edit-kicker">问卷设置</span>
+        <h1>编辑问卷信息</h1>
+        <p class="survey-edit-current">{{ survey.title }}</p>
+      </div>
+      <span class="survey-edit-status">{{ {'draft': '草稿', 'published': '已发布', 'closed': '已关闭'}.get(survey.status, survey.status) }}</span>
+    </div>
+  </div>
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <form method="post" class="survey-create-form survey-edit-form" data-warn-unsaved>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="survey-form-grid">
+      <section class="survey-form-panel survey-edit-basics" aria-labelledby="edit-basics-title">
+        <div class="survey-edit-section-heading"><span class="survey-edit-section-mark" aria-hidden="true"></span><h2 id="edit-basics-title">标题与说明</h2></div>
+        <label for="title">问卷标题</label>
+        <input id="title" name="title" value="{{ title }}" required>
+        <label for="description">问卷说明</label>
+        <textarea id="description" name="description" rows="6">{{ description }}</textarea>
+      </section>
+      {% if survey.status != 'closed' %}
+      <section class="survey-form-panel survey-edit-settings" aria-labelledby="edit-settings-title">
+        <div class="survey-edit-section-heading"><span class="survey-edit-section-mark" aria-hidden="true"></span><h2 id="edit-settings-title">填写设置</h2></div>
+        <div class="survey-edit-setting-block setting-display"><fieldset class="survey-edit-choice-group">
+          <legend>选项编号</legend>
+          <div class="survey-edit-segments">
+            <label><input type="radio" name="option_label_style" value="numeric" {% if option_label_style == 'numeric' %}checked{% endif %}><span>1、2、3、4</span></label>
+            <label><input type="radio" name="option_label_style" value="letters" {% if option_label_style == 'letters' %}checked{% endif %}><span>A、B、C、D</span></label>
+          </div>
+        </fieldset></div>
+        <div class="survey-edit-setting-block setting-access">
+        <h3>填写权限</h3>
+        <label class="setting-choice survey-edit-toggle"><span>允许匿名填写</span><input type="checkbox" name="allow_anonymous" {% if allow_anonymous %}checked{% endif %}></label>
+        <fieldset class="survey-edit-choice-group survey-edit-repeat">
+          <legend>每个账号的填写次数</legend>
+          <div class="survey-edit-segments">
+            <label><input type="radio" name="repeat_policy" value="multiple" {% if repeat_policy == 'multiple' %}checked{% endif %}><span>允许多次</span></label>
+            <label><input type="radio" name="repeat_policy" value="once" {% if repeat_policy == 'once' %}checked{% endif %}><span>只能一次</span></label>
+          </div>
+        </fieldset></div>
+        <div class="survey-edit-setting-block setting-deadline">{% set deadline_value = deadline_text %}{% include 'surveys/_deadline.html' %}</div>
+        {% if survey.status == 'published' %}<p class="setting-change-note">保存后，正在填写的人会在提交时看到改动提示；已提交的答卷不变。</p>{% endif %}
+      </section>
+      {% endif %}
+    </div>
+    <div class="survey-form-actions"><a data-discard-changes href="{{ url_for('surveys.survey_detail', survey_id=survey._id) }}">取消</a><button type="submit" class="primary-button">保存修改</button></div>
+  </form>
+{% endblock %}

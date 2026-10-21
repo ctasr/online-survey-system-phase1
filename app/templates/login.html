@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}登录 · 在线问卷系统{% endblock %}
+{% block main_class %}auth-page{% endblock %}
+{% block content %}
+  <section class="auth-panel">
+  <h1>登录账号</h1>
+  {% if continue_survey_title %}<p class="auth-destination">登录后继续填写「{{ continue_survey_title }}」</p>{% endif %}
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <form method="post" class="account-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="username">用户名</label>
+    <input id="username" name="username" value="{{ username }}" autocomplete="username" required>
+
+    <label for="password">密码</label>
+    <div class="password-field">
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      {% with field_id='password', field_label='密码' %}{% include '_password_toggle.html' %}{% endwith %}
+    </div>
+
+    <button type="submit" class="primary-button">登录</button>
+  </form>
+  <p class="auth-switch">还没有账号？<a href="{{ url_for('auth.register') }}">注册</a></p>
+  </section>
+{% endblock %}

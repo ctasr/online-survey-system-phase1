@@ -1,0 +1,8 @@
+[Unit]
+Description=Renew the survey site's public IP TLS certificate
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/survey-certbot/bin/certbot renew --quiet --no-random-sleep-on-renew --config-dir /etc/letsencrypt-survey-prod --work-dir /var/lib/letsencrypt-survey-prod --logs-dir /var/log/letsencrypt-survey-prod --deploy-hook "/bin/systemctl reload nginx"

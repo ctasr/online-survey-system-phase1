@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}单题统计 · {{ survey.title }}{% endblock %}
+{% block main_class %}content-page statistics-page{% endblock %}
+{% block content %}
+  <p><a href="{{ url_for('surveys.statistics', survey_id=survey._id) }}">← 返回整卷统计</a></p>
+  <h1>{{ survey.title }}：单题统计</h1>
+  <a class="secondary-button question-account-entry" href="{{ url_for('surveys.question_account_responses', survey_id=survey._id, question_id=current_question.id, version=current_question.get('version', 1)) }}">查看本题的账号回答 →</a>
+  <div class="stat-overview stat-overview-single"><div><span>已提交答卷</span><strong>{{ response_count }}</strong></div></div>
+  <details class="statistics-notes"><summary>统计说明</summary><p>同一账号多次提交时，每份答卷分别计入。题目若曾修改，按版本分别展示；选项比例以该版本已回答的答卷为分母。</p></details>
+  {% for result in results if result.current_definition and not result.historical %}{% include 'surveys/_question_statistics.html' %}{% endfor %}
+  {% set historical_results = results | selectattr('historical') | list %}
+  {% if historical_results %}
+    <details class="historical-statistics"><summary>查看历史版本（{{ historical_results|length }} 个版本）</summary>
+      {% for result in historical_results %}{% include 'surveys/_question_statistics.html' %}{% endfor %}
+    </details>
+  {% endif %}
+{% endblock %}

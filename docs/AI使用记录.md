@@ -1,0 +1,150 @@
+# 第一阶段AI使用记录
+
+## 使用工具与记录方法
+
+使用工具：Codex。我在对话中提出开发要求，AI编写和修改Flask程序、MongoDB相关代码、网页、JSON API、测试和文档。我检查页面和实际操作，再提出修改要求。作业文件用于最后核对功能和提交材料，并不是开发开始时交给AI的提示词。
+
+作业文件第5.1节要求写明使用的工具、提示词、AI生成的代码，以及是否修改、修改了什么。第5.2节要求说明AI帮了什么、出了什么错，我自己又做了哪些设计和修改。下文按基础功能、页面体验、统计、部署和文档四部分整理了36项任务。每项先写要求和AI的初步实现，再写我发现的问题和修改结果。同一项任务的多轮指令合并成完整表述，保留具体要求。这份记录经过整理，**不是逐字聊天记录**，也不表示整个开发过程只有36轮。表中的“最终文件”指现在保留下来的代码或文档，不代表每一版初稿都还在。
+
+## 我提出的基础方案
+
+我希望做出一个能实际使用的在线问卷系统。用户注册、登录后，可以创建和管理自己的问卷，不能修改别人的问卷。新问卷先保存为草稿。创建者填写标题和说明，设置是否允许匿名、每个账号可以填写几次、何时截止，然后按顺序添加题目。题目包括单选、多选、文本填空和数字填空，选项和作答限制都由创建者设置，不能只用程序里写死的示例题。
+
+创建者设置题目和条件跳转，检查无误后发布问卷。填写者通过链接进入问卷，系统根据答案显示后续题目。提交时只检查实际需要回答的题目。提交成功后，填写者可以查看自己的答卷，创建者可以查看答卷以及整份问卷、每道题的统计结果。跳转规则必须由创建者自行设置，不能把演示问卷的跳法写死在程序中。账号、问卷、题目设置、跳转规则和答卷都要存入MongoDB，让创建、填写和查看使用同一份数据。
+
+以上是对最初要求的整理，不能当作当时逐字说出的一整段提示词。“选答”怎么标、选择题选项用数字还是字母、提交前确认、长问卷如何定位、怎样查找具名答卷、统计页怎样展示、JSON API和跨网络访问，都是后来根据页面和使用情况逐项提出或修改的。下表按开发顺序记录这些要求，没有把后来的改动写成最初的设计。
+
+## 一、基础功能与技术方案
+
+| 编号 | 提示词（根据对话整理，保留完整要求） | AI编写的代码和初步结果 | 是否修改 | 我检查后提出的修改 |
+| --- | --- | --- | --- | --- |
+| 01 | 请建立一个可以实际使用的在线问卷系统。用户注册、登录后，可以创建和管理自己的问卷，不能修改别人的问卷。新问卷先保存为草稿。创建者要能填写标题和说明，设置是否允许匿名、每个账号的填写次数和截止时间，再添加单选、多选、文本填空和数字填空题，并按答案设置条件跳转。检查无误后，创建者发布问卷，填写者通过链接作答。系统只检查需要回答的题目，保存提交的答卷，供填写者回看、创建者统计。账号、问卷、题目设置、跳转规则和答卷都要保存在MongoDB中，创建、填写、提交和查看必须真正连通。 | `app/__init__.py`和`run.py`建立Flask入口，`app/db.py`建立数据库索引，`README.md`和`.env.example`给出运行配置。 | 是 | 后来我要求完整验证实际流程。AI增加`tests/test_full_journey.py`并保存页面截图，不能仅凭本地网页能打开或自动测试通过就声称体验合格。 |
+| 02 | 先完成账号注册、登录和退出。登录后进入个人页面，每个人只能管理自己的问卷。账号信息要存入MongoDB，问卷管理操作要对应当前登录账号。 | `app/auth.py`实现注册、登录、退出，`app/templates/index.html`、`login.html`、`register.html`提供页面。 | 是 | 初版登录页的入口不够清楚。我后来要求调整按钮和内容的排列，并把重复的密码显示控件改成一个眼睛图标按钮，见`app/templates/_password_toggle.html`和`app/static/app.js`。 |
+| 03 | 创建者需要创建、查看、编辑、发布、关闭和删除自己的问卷。问卷要有标题、说明、是否允许匿名、每个账号的填写次数与截止时间，发布后形成可分享的填写链接。 | `app/surveys.py`的`create_survey`、`edit_survey`、`publish`、`close`等处理状态，`app/templates/surveys/`提供页面。 | 是 | 实际检查编辑页后，我指出信息混在一起、日期输入不直观，AI才调整表单分组和日期快捷选择，创建时间与发布时间的区别在第26项纠正。 |
+| 04 | 问卷应能添加单选、多选、文本填空和数字填空题。创建者能设定选项、多选数量、文本字数、数字范围及整数要求，填写者提交的答案必须符合每道题的设置。 | `app/questions.py`的`build_question`、`validate_answer`处理选项、多选项数、字数、数字范围，`question_new.html`生成编辑表单。 | 是 | 实际使用题目编辑器后，我指出“恰好选择”“必须选择数”等文案不自然，并要求选项移动、删除和预览，AI后续修改编辑控件和提示，见`tests/test_questions.py`。 |
+| 05 | 创建者要能自己配置单选、多选和数字题的条件跳转，不能把示例问卷的分支直接写死在代码中。不同答案可以进入不同的后续题目，跳转目标必须位于当前题目之后。 | `app/jumps.py`的`build_jump_rule`、`rule_matches`、`next_question_index`，`jump_new.html`提供设置页。 | 是 | 初版操作入口不够清楚，我后来要求目标更容易找、可返回前页，并检查规则顺序、重叠和失效问题，见`jump_warnings`、`tests/test_jumps.py`、`tests/test_jump_review.py`。 |
+| 06 | 填写时根据当前答案决定实际题目路径，跳过的题目不应显示为漏答，也不能要求填写。服务端必须重新计算路径和校验答案，不能只相信浏览器，成功提交时保存这次真正经过的题目及其答案。 | `app/surveys.py`的`validated_answers`、`assess_response`计算路径并保存，`app/api.py`提供JSON评估和提交。 | 是 | 我要求跳过的题不算漏答，服务端不能信任前端结果。`tests/test_submissions.py`、`tests/test_json_api.py`检查不合格回答被拒绝、只保存实际经过的题目。 |
+| 07 | 创建者应能查看整份问卷和每道题的统计。单选按选项人数、多选按选项被选次数、文本按实际回答、数字按适合题意的结果展示，统计必须从已提交答卷计算，不能用静态示例结果。 | `app/statistics.py`的`summarize_responses`从答卷重新计算，`statistics.html`、`_question_statistics.html`展示。 | 是 | 我后来指出原设计的统计信息选择不合理，要求适配题型和题量，修改过程见下文21—27。 |
+| 08 | 提供完整的JSON API，并写清请求、响应、状态码和使用方法。API要覆盖账号、问卷、题目、发布、填写和统计，使用与网页一致的权限及校验，请通过真实HTTP请求走通注册、创建、发布、提交和读取结果。 | `app/api.py`实现`/api/v1`的账号、问卷、题目、跳转、填写和统计接口，`API.md`写请求字段、状态码、示例。 | 是 | 我要求真正测试而非口头说能测。`tests/test_json_api_http.py`用两个独立Cookie会话经真实HTTP请求走注册、发布、作答和统计。 |
+
+## 二、界面与填写体验的修正
+
+| 编号 | 提示词（根据对话整理，保留完整要求） | 最终文件和初版问题 | 是否修改 | 修改后的代码和验证 |
+| --- | --- | --- | --- | --- |
+| 09 | 请检查第一阶段整个系统的使用体验，不要只改某个页面。首页、问卷列表、题目编辑、填写、答卷查看和统计都要检查。排版、颜色、文字、按钮、长页面操作和返回入口应清楚、美观、方便，不能只求功能可以运行。 | 最终文件：`app/static/style.css`、`app/static/experience.css`、`app/static/polish.css`。最初多个页面只有白色卡片、紫绿两色和长表单，不容易区分内容。 | 是 | AI修改了样式文件和公共页面`base.html`。我继续根据实际截图指出文字对比度不足、颜色过于重复等问题，要求再改。 |
+| 10 | 重新设计首页和最近问卷区域。创建问卷等主要操作要醒目，“查看全部”不能只是普通文字链接。页面已有内容时不要留下大片空白。问卷卡片里的题号和题目文字，在手机屏幕上也要排得清楚。 | 最终文件：`app/templates/dashboard.html`、`app/templates/index.html`。初版首页的操作入口不显眼，卡片之间留白过多。 | 是 | AI调整了主要操作、最近问卷和答卷入口的布局。页面截图见`output/第一阶段_实际运行流程/04_个人首页.png`。 |
+| 11 | 普通题目默认必答，不要在每道题旁边反复写“必答”。只有可以不回答的题目才标“（选答）”。题目编辑页和填写页都要按这个规则显示，避免同一道题在不同页面说法不一致。 | 最终文件：`app/templates/surveys/question_new.html`、`app/templates/surveys/public.html`。初版反复标出“必答”，真正需要提醒的选答题反而不醒目。 | 是 | 相关页面默认不显示“必答”，只给选答题加上“（选答）”。服务器仍按题目设置检查必答要求。 |
+| 12 | 题目序号固定为数字，选择题的每个选项才可以选择用1、2、3、4或A、B、C、D编号。不要再把A/B/C/D当题号，管理页、预览、正式填写和统计页必须使用一致的题号与选项号规则。 | 最终文件：`app/numbering.py`、`app/templates/surveys/public.html`。AI错把字母选项编号用于题目序号。 | 是 | `app/numbering.py`分开`question_label`与`option_label`，题目编号固定为数字，选择题选项可选数字或字母。`tests/test_answer_overview.py`检查这一点。 |
+| 13 | 把题号与题目正文做视觉区分，避免“1.1+1=”看起来像同一串内容。题号使用独立编号块并保持间距，长标题换行时编号不能被挤成上下两个数字。 | 最终文件：`app/templates/surveys/detail.html`、`app/templates/surveys/public.html`。列表和预览中题号与题目内容挤在同一行。 | 是 | 管理页和答题页改用独立编号块与间距，`app/templates/surveys/detail.html`、`public.html`、样式文件负责展示。 |
+| 14 | 题目创建和编辑页的“取消”必须真的能返回，预览页也要有清楚的返回问卷入口。填写过程中应有回到前一步或退出的方式，避免用户依赖浏览器后退，未保存内容离开时给出恰当提醒。 | 最终文件：`app/static/app.js`、`app/templates/surveys/detail.html`。表单取消和预览返回入口不清楚。 | 是 | 题目编辑/创建、预览等页面增加明确的返回链接，表单未保存时的离开提醒由`app.js`处理。 |
+| 15 | 填写者不要只能一题一题翻。提供题目总览，让用户随时看到当前路径上哪些题已答、哪些未答、哪些需要修改，并能直接定位到相应题目，条件跳转变化后，总览应同步更新。 | 最终文件：`app/templates/surveys/public.html`、`app/static/app.js`。初版逐题操作，长问卷难定位。 | 是 | `public.html`、`app.js`增加题目总览、已答/未答/需修改状态、跳题定位，后续再加入分页和底部快捷操作。`tests/test_answer_overview.py`验证总览遵守跳转路径。 |
+| 16 | 点击提交时检查实际路径上的必答题：未答或不符合限制就提示并阻止提交，用户改正后才能继续。提示尽量简洁，例如“你还未作答本题”，不要再次复制长题目或把已跳过的题列为错误。 | 最终文件：`app/questions.py`、`app/surveys.py`、`app/static/app.js`。初版错误信息重复题目内容，且可能把跳过题当成漏答。 | 是 | 提示缩为“你还未作答本题”，`app/questions.py`、`surveys.py`与前端评估只检查实际到达的必答题。`tests/test_submissions.py`检查无效答案不入库。 |
+| 17 | 合法答卷提交前再让填写者确认一次，明确说明“提交后这份答卷不可修改”。取消确认不能写入答卷，确认后保存并显示提交成功，已提交的答卷只能查看不能编辑。 | 最终文件：`app/static/app.js`、`app/surveys.py`。原提交动作缺少最后确认，提示语也不准确。 | 是 | `app/static/app.js`在校验成功后显示确认对话框，文案为“提交后这份答卷不可修改”，后端只提供创建与读取答卷，不提供修改已提交答卷的接口。 |
+| 18 | 题目很多时，填写者不应一直从页面顶部滚到最下方才能找题或退出。请提供题目总览、分页、回到顶部和退出填写的快捷入口，并检查这些操作在手机屏幕上是否容易找到。 | 最终文件：`app/templates/surveys/public.html`、`app/static/app.js`。初版长问卷需要反复滚动。 | 是 | 填写页增加题目分页、总览、回到顶部和退出填写的快捷操作。大量题目的检查截图保存在`output/大题量体验检查/`。 |
+| 19 | “我的答卷”和创建者查看的单份答卷，都要显示完整题目和提交时的答案。选择题先清楚显示选中的内容，想看其他选项时也能展开。题目后来被修改，旧答卷仍应显示提交时的题目，不能拿新题目解释旧答案。 | 最终文件：`app/templates/surveys/response_detail.html`。初版答卷内容过于简略，看不到完整题目和其他选项。 | 是 | 答卷页显示完整题目和已选答案，也能展开全部选项。答卷较长时可以分页。`tests/test_submissions.py`检查修改题目后的旧答卷。 |
+| 20 | 填写规则的提示语要按正常中文使用逗号和句号，避免每个短条件都用句号隔开。按日期查找答卷时提供“今天”快捷选择，并让首次使用者容易理解日期格式，只按名称查找时不要强制限定日期。 | 最终文件：`app/templates/surveys/public.html`、`app/templates/surveys/my_responses.html`。填写规则的标点不自然，日期查找初始状态不直观。 | 是 | 调整`public.html`的提示拼接，`my_responses.html`、`app.js`的日期筛选提供今天快捷选择，按问卷名称查找不会被强制限定为今天。 |
+
+## 三、统计与答卷查看的修正
+
+| 编号 | 提示词（根据对话整理，保留完整要求） | 最终文件和初版问题 | 是否修改 | 修改后的代码和验证 |
+| --- | --- | --- | --- | --- |
+| 21 | 重新核对统计术语：普通必答题不能被描述成可以“留空”，也不要用“到达本题”这种难懂说法。请区分有效回答、实际经过却未答的选答题、条件跳过和旧版本不存在的题目。 | 最终文件：`app/statistics.py`、`app/templates/surveys/_question_statistics.html`。统计术语把条件跳过、旧版本和选答未填混在一起。 | 是 | `statistics.py`区分有效回答、选答未填及未包含本题，`_question_statistics.html`不把当前必答题描述为可留空。历史旧答卷的空值另作说明。 |
+| 22 | 统计页只保留有助于理解回答结果的信息。请删除额外加入的“填写路径分布”，不要把答卷经过哪些题当成调查结果。创建者仍可在问卷管理页查看自己设置的跳转规则。 | 最终文件：`app/statistics.py`、`app/api.py`。AI曾自行加入“填写路径分布”，但这一项对查看问卷结果没有帮助。 | 是 | 统计页和JSON统计接口不再返回路径分布，仍保留每题的有效回答人数。跳转规则在问卷管理页查看。 |
+| 23 | 如果一份问卷有几百道题，而且题目很长，管理页、填写页、答卷页和统计页就不能反复列出全部题目。请提供按题号或内容查找、简洁的表格、分页和单题详情。需要时仍要能看到完整题目。 | 最终文件：`app/templates/surveys/detail.html`、`app/templates/surveys/statistics.html`、`app/static/app.js`。初版在管理页和统计页反复列出长题，查找很费时。 | 是 | 管理页增加题目查找和分页，统计页增加表格、查找、分页和单题详情。`tests/test_statistics.py`和`tools/check_large_ux.py`检查题目较多的情况。 |
+| 24 | 非匿名提交应让问卷创建者看到各账号的答题情况。请在统计或问卷管理中提供具名答卷列表，并能进入每个账号的完整答卷，匿名答卷只能计入统计，不显示可识别身份。 | 最终文件：`app/surveys.py`、`app/templates/surveys/statistics.html`。只有汇总比例，具名提交的作用没有体现。 | 是 | `surveys.py`增加`survey_account_responses`、`survey_account_response_detail`，`statistics.html`进入逐份具名答卷。匿名提交不暴露身份，见`tests/test_surveys.py`。 |
+| 25 | 每一道题的统计也应方便创建者追查：点开某个选项、文本答案或数字答案时，能看到哪些具名账号给出该答案，并能进入对应完整答卷。大量回答时需要筛选和分页。 | 最终文件：`app/surveys.py`、`app/templates/surveys/_question_statistics.html`。从单题统计不能直接追到作答者。 | 是 | `_question_statistics.html`的选项/文本/数字结果链接至`question_account_responses`，按选项或原文筛选具名账号，该路由及分页在`surveys.py`。 |
+| 26 | 问卷列表和详情中的时间要按实际用途显示。创建草稿的时间与实际点击“发布”的时间不是一回事，发布时单独记录发布时间，已发布问卷优先显示真正的发布时间。 | 最终文件：`app/surveys.py`、`app/templates/surveys/list.html`。曾把创建时间当成发布信息显示。 | 是 | `surveys.py`创建时写`created_at`，实际点击发布时写`published_at`，`list.html`对已发布问卷显示真正的发布时间，草稿才显示创建时间。`tests/test_surveys.py`覆盖发布流程。 |
+| 27 | 数字题的统计重点应根据题目用途来定。数学题有正确答案，先展示每种答案和选择人数，不要把平均值放在最显眼的位置。也要考虑年龄、时长等测量题，不能只修数学题，却让其他问卷出现同样的问题。 | 最终文件：`app/questions.py`、`app/statistics.py`、`app/templates/surveys/_question_statistics.html`。AI起初把平均值作为所有数字题的主要结果，后来又差点把平均值完全删掉，与作业要求不符。 | 是 | 数字题默认展示各答案的人数。创建者将题目设为测量类时，页面可以突出平均值。其他数字题也仍能查看平均值。`tests/test_statistics.py`用`81,81,72`检查分布与平均值。 |
+| 28 | 不要只拿一份答卷展示统计效果。请让多个演示账号分别回答数学和足球问卷，检查选项频次、数字分布、分支结果和逐人查看，明确这些是合成测试答卷，不能当作真实用户调查。 | 最终文件：`tools/seed_all_accounts_answers.py`、`tools/capture_current_statistics.py`。空统计页或一份答卷不能体现频次、分支与逐人查看。 | 是 | `tools/seed_all_accounts_answers.py`为现有演示账号分别提交数学和足球**合成测试答卷**，`output/当前演示问卷/`保存表格与逐题截图。合成数据不冒充真实调查。 |
+
+## 四、部署、测试与文档整理
+
+| 编号 | 提示词（根据对话整理，保留完整要求） | AI编写的代码和初步结果 | 是否修改 | 我指出的问题和修改结果 |
+| --- | --- | --- | --- | --- |
+| 29 | 问卷链接必须能让不同网络的人访问。`127.0.0.1`只指向打开链接的那台电脑，同一Wi-Fi内能访问的地址也不够。我提供腾讯云轻量应用服务器，请把系统部署到这台服务器上，不要借用另一项任务的域名。本地调试地址和对外分享地址要分开。 | 最终文件：`app/sharing.py`。初版只在本机运行，复制出的链接别人打不开。 | 是 | 系统部署到我提供的腾讯云服务器。`app/sharing.py`按`PUBLIC_BASE_URL`生成分享链接，不借用另一项任务的域名。`tests/test_sharing.py`检查本机地址不会被误当成公网地址。 |
+| 30 | 请检查公网网站的首页。直接打开网站根地址就应该能进入系统，不能只有在地址后面加上`/dashboard`才可以访问。请分别以未登录和已登录状态打开页面，并用实际HTTP请求检查。 | 最终文件：`app/__init__.py`。公网根地址曾无法稳定打开。 | 是 | 检查并修正了首页路由和服务器配置。未登录时打开首页，已登录时进入个人页面。`tests/test_auth.py`检查两种状态，公网根地址返回HTTP 200。 |
+| 31 | 我现在打开问卷列表出现500错误，请先查明为什么打不开并修复，再把相关页面和流程重新检查一遍。不能只凭上一轮“测试通过”的结论回复我，修复后要给出实际可打开的页面。 | 最终文件：`app/__init__.py`、`app/templates/error.html`。曾发生服务端错误，页面只显示通用英文500，当时的完整异常堆栈未保留在提交材料中，不能倒推具体成因。 | 是 | 随后复查问卷路由与模板并重新运行测试，`app/__init__.py`加中文错误页面，`error.html`给出返回入口。不能把测试通过等同于服务持续无故障。 |
+| 32 | 删除问卷等重要操作不要使用浏览器原生弹窗。改成与系统风格一致的站内确认界面，清楚说明将删除问卷及其答卷，并允许取消，避免误操作。 | 最终文件：`app/templates/base.html`、`app/static/app.js`。删除问卷使用浏览器原生确认框，与页面风格不一致。 | 是 | `base.html`、`app.js`统一使用站内`<dialog>`确认，删除仍需用户确认，文案说明会删除问卷及答卷。 |
+| 33 | 把演示数据换成两份有意义的问卷：一份基础数学题，每题有唯一正确答案，一份关于足球的兴趣和规则认知问卷。足球题按填写者对足球的了解程度进入不同深度的分支，不要按最喜欢的球员分支，题目内容要合理。 | 最终文件：`tools/replace_demo_surveys.py`。AI曾误解足球分支依据，早期演示问卷与验收目的不符。 | 是 | `tools/replace_demo_surveys.py`建立基础数学题和足球兴趣/规则认知两份演示问卷，足球按自评了解程度进入不同深度的题目。`tools/capture_current_statistics.py`检查当前统计页并保存图片。 |
+| 34 | 测试用例必须列出步骤、输入、实际输出和结果，并用实际运行截图佐证关键操作，不能只写“测试通过”。请在后台完整运行创建、填写、跳转、校验、提交和统计流程，保存原始测试日志与页面截图。 | 最终文件：`tests/test_json_api_http.py`、`docs/测试用例与结果.md`。单说“测试通过”缺乏步骤、输入、实际输出和画面证据。 | 是 | `tests/`有41项自动测试，`tests/test_json_api_http.py`跑真实HTTP，`docs/测试用例与结果.md`分别写步骤、输入、预期、实际结果，`output/第一阶段_实际运行流程/`保存33张实际页面截图。 |
+| 35 | AI使用记录要按开发过程有条理地写。先写我提出的设计和具体指令，再写AI生成的代码、我发现的问题、对应修改和复测。不能只写几句笼统评价，也不能把后来反复修改的问题说成一开始就设计正确。 | 最终文件：`docs/AI使用记录.md`。AI最初只写了四行概括，缺少具体指令、代码和修改过程。 | 是 | 按开发顺序写明最初的设计要求、页面问题、代码修改和复测结果。完成报告也收入这份详细记录，不再用几句摘要代替实际过程。 |
+| 36 | 最终报告中的AI使用过程要完整呈现实际需求与修改链条，不能把我给出的指令缩成十项标签，也不能把最终核对原文件写成一开始直接让AI按原文件设计。整理时保留功能结果和纠错先后，去掉不适合正式报告的反问语气，并标清不是逐字聊天记录。 | 最终文件：`docs/第一阶段完成报告.md`。完成报告错误地把原文件写成AI的开发输入，又把实际多轮使用压缩为十行。 | 是 | `docs/第一阶段完成报告.md`改写开发输入说明，并纳入本表全部事件和代表性代码，不把最终核对原文件写成初始提示。 |
+
+## 代表性代码文件及作用
+
+下面是最终代码中的关键语句节选，完整函数与上下文以对应源文件为准。
+
+```python
+# app/db.py：用户名、公开链接及“仅填一次”均用数据库索引保证唯一性
+database.users.create_index("username", unique=True)
+database.surveys.create_index("slug", unique=True)
+database.responses.create_index(
+    [("survey_id", 1), ("respondent_key", 1)],
+    name="one_response_per_user_when_limited",
+    unique=True,
+    partialFilterExpression={"repeat_limited": True},
+)
+```
+
+```python
+# app/jumps.py：跳转规则按创建者设置的顺序命中
+def next_question_index(questions, index, value):
+    source = questions[index]
+    later = {question["id"]: position for position, question in enumerate(questions) if position > index}
+    for rule in source.get("jumps", []):
+        target_index = later.get(rule.get("target_id"))
+        if target_index is not None and not rule_issue(source, rule, later) and rule_matches(rule, value):
+            return target_index
+    return index + 1
+```
+
+```javascript
+// app/static/app.js：先评估漏答，再让填写者确认不可修改，最后才真正提交
+const result = await assess(true);
+if (result && !Object.keys(result.errors).length) {
+  const confirmed = surveyFlow.dataset.preview === 'true' || await askConfirmation({
+    title: '提交答卷？',
+    message: '提交后这份答卷不可修改。',
+    label: '确认提交',
+    tone: 'primary'
+  });
+  if (confirmed) {
+    if (draftSaving) await draftSaving.catch(() => {});
+    surveyFlow.dataset.submitting = "true";
+    HTMLFormElement.prototype.submit.call(surveyFlow);
+    return;
+  }
+}
+```
+
+```python
+# app/questions.py：多选题由服务器核验是否满足创建者设置的数量规则
+if exact is not None and count != exact:
+    raise ValueError(f"“{title}”请选择 {exact} 项。")
+minimum = question.get("min_select")
+maximum = question.get("max_select")
+if minimum is not None and count < minimum:
+    raise ValueError(f"“{title}”至少选 {minimum} 项。")
+if maximum is not None and count > maximum:
+    raise ValueError(f"“{title}”最多选 {maximum} 项。")
+```
+
+```python
+# app/statistics.py：数字题既统计每个答案的份数，也保留原文件要求的平均值
+frequencies = Counter(result["values"])
+result["number_frequencies"] = sorted(frequencies.items(),
+                                       key=lambda item: (-item[1], Decimal(item[0])))
+average = sum(numbers, Decimal(0)) / len(numbers)
+```
+
+```python
+# app/api.py：JSON API 与网页调用同一份统计计算逻辑
+results, overview = summarize_responses(survey.get("questions", []), responses,
+                                        survey.get("question_history", []), return_overview=True)
+```
+
+## AI能做什么、没做好什么，我做了什么
+
+AI编写了应用代码、数据库索引、页面、接口、测试脚本和文档，帮助我较快搭起可以运行的系统。但AI起初混淆了题号和选项编号，也没有处理好必答与选答、数学题的统计重点、长问卷查找题目以及具名答卷查看。自动测试通过后，我仍在实际页面上发现问题。因此，AI写出的代码需要按作业要求检查，也需要亲自操作页面验证。
+
+我提出系统目标和使用要求，检查页面并提供截图，指出不方便或不符合要求的地方，再要求AI修改和重新测试。其中，足球问卷应按了解程度分支，数学题应突出答案分布，匿名和具名答卷的查看范围要分清，分享链接要能跨网络打开。这些都是我在实际检查后明确要求修改的。测试步骤与结果见[测试用例与结果](测试用例与结果.md)，接口说明见[API说明](../API.md)。

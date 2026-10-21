@@ -1,0 +1,16 @@
+<div class="deadline-picker" data-deadline-picker>
+  <label for="deadline">截止时间 <span class="field-optional">北京时间，可不设置</span></label>
+  <input id="deadline" name="deadline" type="datetime-local" value="{{ deadline_value }}" data-deadline-value>
+  <div class="deadline-quick" data-deadline-ui hidden>
+    <div class="date-shortcuts" aria-label="快速设置截止日期">
+      <button type="button" data-deadline-days="0">今天结束</button>
+      <button type="button" data-deadline-days="1">明天结束</button>
+      <button type="button" data-deadline-days="7">一周后</button>
+      <button type="button" data-deadline-clear>不限时</button>
+    </div>
+    <div class="deadline-fields">
+      <label for="deadline-date">日期 <input id="deadline-date" type="date" data-deadline-date></label>
+      <label for="deadline-time">时间 <input id="deadline-time" type="time" value="23:59" data-deadline-time></label>
+    </div>
+  </div>
+</div>

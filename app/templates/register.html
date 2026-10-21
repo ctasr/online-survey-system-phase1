@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}注册 · 在线问卷系统{% endblock %}
+{% block main_class %}auth-page{% endblock %}
+{% block content %}
+  <section class="auth-panel">
+  <h1>注册账号</h1>
+  {% if continue_survey_title %}<p class="auth-destination">注册后登录，即可填写「{{ continue_survey_title }}」</p>{% endif %}
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <form method="post" class="account-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label for="username">用户名</label>
+    <input id="username" name="username" value="{{ username }}" autocomplete="username" required>
+
+    <label for="password">密码</label>
+    <div class="password-field">
+      <input id="password" name="password" type="password" minlength="6" maxlength="12" autocomplete="new-password" required>
+      {% with field_id='password', field_label='密码' %}{% include '_password_toggle.html' %}{% endwith %}
+    </div>
+
+    <label for="confirmation">确认密码</label>
+    <div class="password-field">
+      <input id="confirmation" name="confirmation" type="password" minlength="6" maxlength="12" autocomplete="new-password" required>
+      {% with field_id='confirmation', field_label='确认密码' %}{% include '_password_toggle.html' %}{% endwith %}
+    </div>
+
+    <button type="submit" class="primary-button">注册</button>
+  </form>
+  <p class="auth-switch">已有账号？<a href="{{ url_for('auth.login') }}">登录</a></p>
+  </section>
+{% endblock %}

@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block main_class %}home-page{% endblock %}
+{% block content %}
+<section class="welcome-layout">
+  <div class="welcome-copy"><h1>在线<br><span>问卷系统</span></h1><p>创建与管理问卷，查看调查结果，回顾自己提交的答卷。</p><a href="{{ url_for('auth.register') }}" class="welcome-register">注册账号 <span aria-hidden="true">↗</span></a></div>
+  <section class="welcome-login"><h2>登录账号</h2>
+    <form method="post" action="{{ url_for('auth.login') }}" class="account-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <label for="username">用户名</label><input id="username" name="username" autocomplete="username" required>
+      <label for="password">密码</label><div class="password-field"><input id="password" name="password" type="password" autocomplete="current-password" required>{% with field_id='password', field_label='密码' %}{% include '_password_toggle.html' %}{% endwith %}</div>
+      <button class="primary-button" type="submit">登录</button>
+    </form>
+  </section>
+</section>
+{% endblock %}

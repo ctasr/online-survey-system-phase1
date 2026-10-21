@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}{{ '编辑' if question is defined else '添加' }}题目 · {{ survey.title }}{% endblock %}
+{% block main_class %}workspace-page{% endblock %}
+{% block content %}
+  <div class="form-page-heading editor-page-heading"><a href="{{ url_for('surveys.survey_detail', survey_id=survey._id) }}">← 返回问卷</a><div class="editor-title-row"><div><span class="editor-survey-name">{{ survey.title }}</span><h1>{{ '编辑' if question is defined else '添加' }}题目</h1></div></div></div>
+  {% if question is defined and survey.status == 'published' %}
+    <p class="hint">保存后，本题的新版本用于之后的填写；已提交答卷仍按原版本统计。正在填写的人会在提交时收到提示，并重新回答本题。</p>
+  {% endif %}
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <div class="editor-layout">
+  <form method="post" class="account-form question-form survey-editor-card" data-question-form data-option-style="{{ option_style(survey) }}" data-warn-unsaved>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <p class="question-form-context">选项编号使用整份问卷的设置；可在<a href="{{ url_for('surveys.edit_survey', survey_id=survey._id) }}">问卷信息</a>中调整。</p>
+    <label for="question-type">题型</label>
+    <select id="question-type" name="type" required>
+      {% for value, label in question_types.items() %}
+        <option value="{{ value }}" {% if form.get('type', 'single_choice') == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+    <div class="type-choices" role="group" aria-label="题型" data-type-choices hidden>{% for value, label in question_types.items() %}<button type="button" data-question-type="{{ value }}" aria-pressed="false"><span aria-hidden="true">{{ {'single_choice':'○', 'multiple_choice':'☑', 'text':'Aa', 'number':'123'}[value] }}</span>{{ label }}</button>{% endfor %}</div>
+    <label for="question-title">题目内容</label>
+    <input id="question-title" name="title" value="{{ form.get('title', '') }}" required>
+    <label class="checkbox-row" data-required-choice><input name="required" type="checkbox" {% if form.get('required') == 'on' or (question is not defined and request.method == 'GET') %}checked{% endif %}> 必答</label>
+    <div data-for-type="single_choice multiple_choice" class="question-fields">
+      <label for="options">选项</label>
+      <textarea id="options" name="options" rows="6">{{ form.get('options', '') }}</textarea>
+      <div data-options-editor hidden><div data-options-rows></div><div class="option-tools"><button type="button" data-add-option>＋ 添加选项</button><button type="button" data-batch-options>批量输入</button></div></div>
+    </div>
+    <div data-for-type="multiple_choice" class="question-fields">
+      <label for="selection-mode">多选数量限制</label>
+      <select id="selection-mode" data-selection-mode>
+        <option value="range" {% if not form.get('exact_select', '') %}selected{% endif %}>设置最少、最多选几项</option>
+        <option value="exact" {% if form.get('exact_select', '') %}selected{% endif %}>固定选几项</option>
+      </select>
+      <div class="selection-fields" data-selection-group="range">
+        <div class="limit-field"><label for="min-select">最少选几项</label><input id="min-select" name="min_select" placeholder="不限" type="number" min="0" value="{{ form.get('min_select', '') }}"></div>
+        <div class="limit-field"><label for="max-select">最多选几项</label><input id="max-select" name="max_select" placeholder="不限" type="number" min="0" value="{{ form.get('max_select', '') }}"></div>
+      </div>
+      <div class="selection-fields" data-selection-group="exact">
+        <div class="limit-field"><label for="exact-select">需要选几项</label><input id="exact-select" name="exact_select" type="number" min="1" value="{{ form.get('exact_select', '') }}"></div>
+      </div>
+    </div>
+    <div data-for-type="text" class="question-fields">
+      <div class="limit-grid">
+        <div class="limit-field"><label for="min-length">最少字数</label><input id="min-length" name="min_length" placeholder="不限" type="number" min="0" value="{{ form.get('min_length', '') }}"></div>
+        <div class="limit-field"><label for="max-length">最多字数</label><input id="max-length" name="max_length" placeholder="不限" type="number" min="0" value="{{ form.get('max_length', '') }}"></div>
+      </div>
+    </div>
+    <div data-for-type="number" class="question-fields">
+      <div class="limit-grid">
+        <div class="limit-field"><label for="min-value">最小值</label><input id="min-value" name="min_value" placeholder="不限" type="number" step="any" value="{{ form.get('min_value', '') }}"></div>
+        <div class="limit-field"><label for="max-value">最大值</label><input id="max-value" name="max_value" placeholder="不限" type="number" step="any" value="{{ form.get('max_value', '') }}"></div>
+      </div>
+      <label class="checkbox-row"><input name="integer_only" type="checkbox" {% if form.get('integer_only') == 'on' %}checked{% endif %}> 必须为整数</label>
+      <label for="number-statistics">统计方式</label>
+      <select id="number-statistics" name="number_statistics">
+        <option value="distribution" {% if form.get('number_statistics', 'distribution') == 'distribution' %}selected{% endif %}>按答案统计人数（默认，适合计算题等有确定答案的问题）</option>
+        <option value="measure" {% if form.get('number_statistics') == 'measure' %}selected{% endif %}>数值测量（适合年龄、时长等，显示平均值与范围）</option>
+      </select>
+    </div>
+    <div class="editor-actions"><button type="submit" class="primary-button">{{ '保存修改' if question is defined else '保存题目' }}</button>{% if question is not defined %}<button class="secondary-button" type="submit" name="after_save" value="another">保存并继续添加</button>{% endif %}<a data-discard-changes href="{{ url_for('surveys.survey_detail', survey_id=survey._id) }}">取消</a></div>
+  </form>
+  <aside class="question-preview" data-question-preview hidden><div class="preview-heading"><span>填写预览</span><span data-preview-type></span></div><h2 data-preview-title></h2><div data-preview-options></div><p class="hint" data-preview-rules></p></aside>
+  </div>
+  <script>
+    const selector = document.querySelector('#question-type');
+    function showFields() {
+      document.querySelectorAll('[data-for-type]').forEach(group => {
+        group.hidden = !group.dataset.forType.split(' ').includes(selector.value);
+        group.querySelectorAll('input, textarea, select').forEach(input => { input.disabled = group.hidden; });
+      });
+      showSelectionFields();
+    }
+    const selectionMode = document.querySelector('[data-selection-mode]');
+    function showSelectionFields() {
+      document.querySelectorAll('[data-selection-group]').forEach(group => {
+        group.hidden = group.dataset.selectionGroup !== selectionMode.value;
+        group.querySelectorAll('input').forEach(input => { input.disabled = group.hidden || selector.value !== 'multiple_choice'; });
+      });
+      const exactChoice = selector.value === 'multiple_choice' && selectionMode.value === 'exact';
+      const requiredChoice = document.querySelector('[data-required-choice]');
+      requiredChoice.hidden = exactChoice;
+      requiredChoice.querySelector('input').disabled = exactChoice;
+    }
+    selector.addEventListener('change', showFields);
+    selectionMode.addEventListener('change', showSelectionFields);
+    showFields();
+    showSelectionFields();
+  </script>
+{% endblock %}

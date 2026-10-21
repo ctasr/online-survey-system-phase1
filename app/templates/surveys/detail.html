@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}{{ survey.title }} · 在线问卷系统{% endblock %}
+{% block main_class %}content-page survey-detail-page{% endblock %}
+{% block content %}
+  <p><a href="{{ url_for('surveys.my_surveys') }}">← 返回我的问卷</a></p>
+  <div class="survey-titlebar"><div class="survey-title-main"><h1>{{ survey.title }}</h1><span class="status" data-status="{{ status_text(survey) }}">{{ status_text(survey) }}</span></div><a class="survey-edit-link" href="{{ url_for('surveys.edit_survey', survey_id=survey._id) }}">编辑问卷信息</a></div>
+  {% if survey.description %}<p class="description">{{ survey.description }}</p>{% endif %}
+  <dl class="survey-details">
+    <div><dt>匿名填写</dt><dd>{{ '允许' if survey.allow_anonymous else '不允许' }}</dd></div>
+    <div><dt>重复填写</dt><dd>{{ '允许多次' if survey.get('allow_multiple_submissions', True) else '仅一次' }}</dd></div>
+    <div><dt>截止时间</dt><dd>{{ local_time(survey.deadline) }}</dd></div>
+  </dl>
+  {% if survey.status != 'closed' %}
+    <details class="deadline-settings"><summary>调整截止时间</summary>
+    <form action="{{ url_for('surveys.set_deadline', survey_id=survey._id) }}" method="post" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      {% set deadline_value = local_time(survey.deadline).replace(' ', 'T') if survey.deadline else '' %}{% include 'surveys/_deadline.html' %}
+      <button type="submit">保存</button>
+    </form></details>
+  {% endif %}
+
+  {% if visible_questions %}<div class="actions survey-main-actions">
+    {% if visible_questions %}<a href="{{ url_for('surveys.preview_survey', survey_id=survey._id) }}">预览问卷</a>{% endif %}
+    {% if survey.status == 'draft' %}
+      <form action="{{ url_for('surveys.publish', survey_id=survey._id) }}" method="post">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="primary-button">发布问卷</button>
+      </form>
+    {% elif survey.status == 'published' %}
+      <form action="{{ url_for('surveys.close', survey_id=survey._id) }}" method="post" data-confirm-title="关闭问卷？" data-confirm-message="关闭后将无法继续填写，也不能重新发布。" data-confirm-label="关闭问卷" data-confirm-tone="warning">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="secondary-button">关闭问卷</button>
+      </form>
+    {% endif %}
+    <a href="{{ url_for('surveys.statistics', survey_id=survey._id) }}">查看统计</a>
+  </div>{% endif %}
+
+  {% if status_text(survey) == '已发布' %}
+    {% if share_scope == 'public' %}
+      <h2>填写链接</h2>
+      <div class="survey-link-row"><a href="{{ share_url }}">{{ share_url }}</a><button type="button" data-copy-url="{{ share_url }}">复制链接</button><span class="hint" data-copy-feedback role="status"></span></div>
+    {% else %}
+      <h2>跨网络分享尚未启用</h2>
+      <p class="share-scope-note">问卷已发布，但当前服务只在本地运行，还没有不同网络的人都能访问的公网地址。请先部署到可公开访问的服务器，配置公网地址后再分享链接。</p>
+      <p><a href="{{ public_path }}">在本机查看填写页</a></p>
+    {% endif %}
+  {% endif %}
+
+  <div class="page-heading">
+    <h2>题目（{{ visible_questions|length }}）</h2>
+    {% if survey.status in ('draft', 'published') %}<a class="primary-link" href="{{ url_for('surveys.add_question', survey_id=survey._id) }}">添加题目</a>{% endif %}
+  </div>
+  {% if warning_count %}
+    <p class="jump-warning" role="status">检测到 {{ warning_count }} 条跳转提醒。规则仍可保存和发布；请检查下方提示及优先级，填写时始终先执行排在前面的命中规则。</p>
+  {% endif %}
+  {% set jump_count = namespace(value=0) %}{% for item in visible_questions %}{% set jump_count.value = jump_count.value + item.jumps|length %}{% endfor %}
+  {% if jump_count.value %}<details class="jump-overview"><summary>查看整份问卷的跳转规则（{{ jump_count.value }} 条）</summary><ol>{% for item in visible_questions %}{% set source_number = loop.index %}{% for rule in item.jumps %}<li><a href="{{ url_for('surveys.new_jump', survey_id=survey._id, question_id=item.id) }}">第 {{ source_number }} 题</a><span>{% if rule.kind == 'single_choice' %}选择「{{ rule.option }}」{% elif rule.kind == 'multiple_choice' %}{{ multi_modes.get(rule.mode, '多选条件') }}：{{ rule.options|join('、') }}{% elif rule.kind == 'number' %}数值{{ number_operators.get(rule.operator, '满足条件') }} {{ rule.threshold }}{% endif %}</span><strong>→ {{ question_titles.get(rule.target_id, '目标已失效') }}</strong></li>{% endfor %}{% endfor %}</ol></details>{% endif %}
+  {% if visible_questions %}
+    {% if visible_questions|length > 10 %}<div class="question-list-toolbar"><div class="question-search"><label for="question-search">查找题目</label><input id="question-search" type="search" placeholder="输入题号或题目内容" data-question-search><span data-question-search-count></span></div><div class="question-view-switch" data-question-view-switch><button type="button" data-question-view="compact" aria-pressed="true">紧凑列表</button><button type="button" data-question-view="cards" aria-pressed="false">卡片详情</button></div></div>{% endif %}
+    <ol class="question-list{{ ' is-condensed' if visible_questions|length > 10 else '' }}" data-question-list>
+      {% for question in visible_questions %}
+        <li id="question-{{ question.id }}" data-question-number="{{ loop.index }}" data-question-title="{{ question.title|lower }}"{% if jump_warnings.get(question.id) %} class="is-expanded"{% endif %}>
+          <div class="question-list-heading"><span class="question-list-number">{{ question_label(loop.index) }}</span><strong title="{{ question.title }}">{{ question.title }}</strong><span class="question-type-label">{{ question_types[question.type] }}</span>{% if not question.required %}<span class="question-optional-label">（选答）</span>{% endif %}{% if visible_questions|length > 10 %}<button type="button" class="question-expand" data-question-expand aria-expanded="{{ 'true' if jump_warnings.get(question.id) else 'false' }}">{{ '收起' if jump_warnings.get(question.id) else '展开操作' }}</button>{% endif %}</div>
+          {% if survey.status in ('draft', 'published') %}
+            <div class="question-actions">
+              <a href="{{ url_for('surveys.edit_question', survey_id=survey._id, question_id=question.id) }}">编辑题目</a>
+              {% if question.type in ('single_choice', 'multiple_choice', 'number') and visible_questions[loop.index:] %}
+                <a href="{{ url_for('surveys.new_jump', survey_id=survey._id, question_id=question.id) }}">设置跳转{% if question.jumps %}（{{ question.jumps|length }}）{% endif %}</a>
+              {% endif %}
+              {% if survey.status != 'published' or visible_questions|length > 1 %}
+                <form method="post" action="{{ url_for('surveys.delete_question', survey_id=survey._id, question_id=question.id) }}" class="inline-delete" data-confirm-title="删除题目？" data-confirm-message="“{{ question.title }}”将不再显示。旧答卷和历史统计会保留，指向本题的跳转规则会移除。" data-confirm-label="删除题目">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <button type="submit">删除题目</button>
+                </form>
+              {% endif %}
+            </div>
+          {% endif %}
+          <details class="question-settings" {% if jump_warnings.get(question.id) %}open{% endif %}>
+            <summary>选项、限制与跳转{% if jump_warnings.get(question.id) %} · 需检查{% endif %}</summary>
+          {% if question.options %}<p>选项：{% for option in question.options %}{{ option_label(loop.index, option_style(survey)) }}. {{ option }}{% if not loop.last %}　{% endif %}{% endfor %}</p>{% endif %}
+          {% if question.type == 'multiple_choice' %}
+            {% if question.exact_select is not none or question.min_select is not none or question.max_select is not none %}<p class="hint">{% if question.exact_select is not none %}需选 {{ question.exact_select }} 项{% else %}{% if question.min_select is not none %}至少选 {{ question.min_select }} 项{% endif %}{% if question.min_select is not none and question.max_select is not none %}，{% endif %}{% if question.max_select is not none %}最多选 {{ question.max_select }} 项{% endif %}{% endif %}</p>{% endif %}
+          {% elif question.type == 'text' %}
+            {% if question.min_length is not none or question.max_length is not none %}<p class="hint">{% if question.min_length is not none %}至少填写 {{ question.min_length }} 字{% endif %}{% if question.min_length is not none and question.max_length is not none %}，{% endif %}{% if question.max_length is not none %}最多填写 {{ question.max_length }} 字{% endif %}</p>{% endif %}
+          {% elif question.type == 'number' %}
+            {% if question.min_value is not none or question.max_value is not none or question.integer_only %}<p class="hint">{% if question.integer_only %}只能填写整数{% endif %}{% if question.integer_only and (question.min_value is not none or question.max_value is not none) %}，{% endif %}{% if question.min_value is not none %}不能小于 {{ question.min_value }}{% endif %}{% if question.min_value is not none and question.max_value is not none %}，{% endif %}{% if question.max_value is not none %}不能大于 {{ question.max_value }}{% endif %}</p>{% endif %}
+          {% endif %}
+          {% set later_questions = visible_questions[loop.index:] %}
+          {% if question.jumps %}
+            <p><strong>跳转规则（优先级从上到下；第一条命中即执行）</strong></p>
+            <ol class="jump-list">
+              {% for rule in question.jumps %}
+                <li>
+                  <strong>优先级 {{ loop.index }}：</strong>
+                  {% if rule.kind == 'single_choice' %}选择“{{ rule.option }}”
+                  {% elif rule.kind == 'multiple_choice' %}{{ multi_modes.get(rule.mode, '无效的多选条件') }}：{{ rule.options|join('、') }}
+                  {% elif rule.kind == 'number' %}数值{{ number_operators.get(rule.operator, '无效的比较方式') }} {{ rule.threshold }}
+                  {% else %}无效的跳转条件{% endif %}
+                  → {{ question_titles.get(rule.target_id, '已失效的目标') }}
+                  {% if survey.status in ('draft', 'published') %}
+                    {% if not loop.first %}
+                      <form method="post" action="{{ url_for('surveys.move_jump', survey_id=survey._id, question_id=question.id, rule_id=rule.id) }}" class="inline-delete">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="direction" value="up">
+                        <button type="submit">上移</button>
+                      </form>
+                    {% endif %}
+                    {% if not loop.last %}
+                      <form method="post" action="{{ url_for('surveys.move_jump', survey_id=survey._id, question_id=question.id, rule_id=rule.id) }}" class="inline-delete">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="direction" value="down">
+                        <button type="submit">下移</button>
+                      </form>
+                    {% endif %}
+                    <form method="post" action="{{ url_for('surveys.delete_jump', survey_id=survey._id, question_id=question.id, rule_id=rule.id) }}" class="inline-delete" data-confirm-title="删除跳转规则？" data-confirm-message="删除后，这条规则将不再影响填写路径。" data-confirm-label="删除规则">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button type="submit">删除</button>
+                    </form>
+                  {% endif %}
+                </li>
+              {% endfor %}
+            </ol>
+          {% endif %}
+          {% if jump_warnings.get(question.id) %}
+            <ul class="jump-warning-list">
+              {% for warning in jump_warnings[question.id] %}<li>{{ warning }}</li>{% endfor %}
+            </ul>
+          {% endif %}
+          {% if survey.status in ('draft', 'published') and later_questions and question.type in ('single_choice', 'multiple_choice', 'number') %}
+            <a class="jump-add-link" href="{{ url_for('surveys.new_jump', survey_id=survey._id, question_id=question.id) }}">＋ 添加跳转规则</a>
+          {% endif %}
+          </details>
+        </li>
+      {% endfor %}
+    </ol>
+    {% if visible_questions|length > 10 %}<p class="filter-empty" data-question-search-empty hidden>没有符合条件的题目。</p>{% endif %}
+    {% if visible_questions|length > 20 %}<nav class="question-list-pages" data-question-pages aria-label="题目分页"><button type="button" data-question-prev>← 上一页</button><span data-question-page-status></span><button type="button" data-question-next>下一页 →</button><label>跳到第 <input type="number" min="1" value="1" data-question-page-input aria-label="题目页码"> 页</label><button type="button" data-question-page-go>跳转</button></nav>{% endif %}
+  {% else %}<p class="hint">尚未添加题目。</p>{% endif %}
+  {% if removed_questions %}
+    <h2>已移除的题目</h2>
+    <p class="hint">不再向填写者显示；此前提交的答案仍可查看统计。</p>
+    <ul>{% for question in removed_questions %}
+      <li>{{ question.title }} · <a href="{{ url_for('surveys.question_statistics', survey_id=survey._id, question_id=question.id) }}">查看历史统计</a></li>
+    {% endfor %}</ul>
+  {% endif %}
+
+  {% if survey.status in ('draft', 'published') and visible_questions|length > 2 %}
+    <div class="survey-bottom-actions"><a class="primary-link" href="{{ url_for('surveys.add_question', survey_id=survey._id) }}">继续添加题目</a></div>
+  {% endif %}
+
+  <details class="survey-danger-zone"><summary>删除这份问卷</summary><p>删除后，问卷链接将失效，该问卷的答卷和统计也会一并清除，无法恢复。</p><form method="post" action="{{ url_for('surveys.delete_survey', survey_id=survey._id) }}" data-confirm-title="删除问卷？" data-confirm-message="“{{ survey.title }}”及其全部答卷和统计将永久删除，无法恢复。" data-confirm-label="删除问卷"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">删除问卷</button></form></details>
+{% endblock %}

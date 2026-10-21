@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}个人首页 · 在线问卷系统{% endblock %}
+{% block main_class %}workspace-page dashboard-page{% endblock %}
+{% block content %}
+  <header class="home-header">
+    <div><p class="home-eyebrow">个人首页</p><h1>你好，{{ g.user.username }}</h1></div>
+    <a class="primary-link" href="{{ url_for('surveys.create_survey') }}">创建问卷 <span aria-hidden="true">＋</span></a>
+  </header>
+
+  {% if surveys %}
+    {% set featured = surveys[0] %}
+    {% set questions = featured.visible_questions %}
+    <section class="home-section" aria-labelledby="recent-survey-heading">
+      <div class="home-section-heading">
+        <h2 id="recent-survey-heading">最近的问卷</h2>
+        <a href="{{ url_for('surveys.my_surveys') }}">管理全部问卷 <span aria-hidden="true">↗</span></a>
+      </div>
+      <div class="home-feature">
+        <div class="home-feature-summary">
+          <span class="home-feature-status">{{ status_text(featured) }}</span>
+          <h3><a href="{{ url_for('surveys.survey_detail', survey_id=featured._id) }}">{{ featured.title }}</a></h3>
+          {% if featured.description %}<p class="home-feature-description">{{ featured.description }}</p>{% endif %}
+          <div class="home-feature-meta"><span>{{ questions|length }} 道题</span><span>{% if featured.published_at %}发布于 {{ local_time(featured.published_at) }}{% else %}创建于 {{ local_time(featured.created_at) }}{% endif %}</span></div>
+          <div class="home-feature-actions">
+            {% if featured.status == 'draft' and not questions %}
+              <a class="home-feature-primary" href="{{ url_for('surveys.add_question', survey_id=featured._id) }}">添加题目 <span aria-hidden="true">→</span></a>
+            {% elif featured.status == 'draft' %}
+              <a class="home-feature-primary" href="{{ url_for('surveys.survey_detail', survey_id=featured._id) }}">继续编辑 <span aria-hidden="true">→</span></a>
+              <a class="home-feature-secondary" href="{{ url_for('surveys.preview_survey', survey_id=featured._id) }}">预览问卷 <span aria-hidden="true">↗</span></a>
+            {% else %}
+              <a class="home-feature-primary" href="{{ url_for('surveys.statistics', survey_id=featured._id) }}">查看统计 <span aria-hidden="true">→</span></a>
+            {% endif %}
+            {% if featured.status != 'draft' or not questions %}<a class="home-feature-secondary" href="{{ url_for('surveys.survey_detail', survey_id=featured._id) }}">管理问卷 <span aria-hidden="true">↗</span></a>{% endif %}
+          </div>
+        </div>
+        <div class="home-feature-questions">
+          <div class="home-feature-questions-heading"><span>问卷题目</span><strong>{{ questions|length }}</strong></div>
+          {% if questions %}
+            <ol class="home-question-list">
+              {% for question in questions[:3] %}<li><span>{{ '%02d'|format(loop.index) }}</span><a href="{{ url_for('surveys.survey_detail', survey_id=featured._id) }}#question-{{ question.id }}">{{ question.title }}</a></li>{% endfor %}
+            </ol>
+            {% if questions|length > 3 %}<p class="home-more-questions">还有 {{ questions|length - 3 }} 道题</p>{% endif %}
+          {% elif featured.status == 'draft' %}
+            <div class="home-question-empty"><span class="home-question-empty-mark" aria-hidden="true">＋</span><p>还没有题目</p></div>
+          {% else %}
+            <p class="home-question-empty-text">这份问卷目前没有题目。</p>
+          {% endif %}
+        </div>
+      </div>
+    </section>
+
+    {% if surveys|length > 1 or response_count > 0 %}
+      <div class="home-lower">
+        {% if surveys|length > 1 %}<section class="home-other-surveys" aria-labelledby="other-surveys-heading"><h2 id="other-surveys-heading">其他问卷</h2><ul>{% for survey in surveys[1:4] %}<li><a href="{{ url_for('surveys.survey_detail', survey_id=survey._id) }}">{{ survey.title }}</a><span>{{ status_text(survey) }}</span></li>{% endfor %}</ul></section>{% endif %}
+        {% if response_count > 0 %}<section class="home-answers" aria-labelledby="home-answers-heading"><div><h2 id="home-answers-heading">我的答卷</h2><strong>{{ response_count }} 份</strong></div><a href="{{ url_for('surveys.my_responses') }}">查看答卷 <span aria-hidden="true">→</span></a></section>{% endif %}
+      </div>
+    {% endif %}
+  {% else %}
+    <section class="home-first-survey"><div><p>我的问卷</p><h2>还没有创建问卷</h2><span class="home-first-hint">创建后，你的问卷和统计入口会出现在这里。</span></div><div class="home-first-preview" aria-hidden="true"><span></span><i></i><i></i><i></i></div></section>
+    {% if response_count %}<section class="home-answers home-answers-standalone"><div><h2>我的答卷</h2><strong>{{ response_count }} 份</strong></div><a href="{{ url_for('surveys.my_responses') }}">查看答卷 <span aria-hidden="true">→</span></a></section>{% endif %}
+  {% endif %}
+{% endblock %}

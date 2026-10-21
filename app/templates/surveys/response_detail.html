@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}我的答卷 · 在线问卷系统{% endblock %}
+{% block main_class %}content-page response-detail-page{% endblock %}
+{% block content %}
+<a class="back-link" href="{{ url_for('surveys.survey_account_responses', survey_id=survey._id) if owner_view else url_for('surveys.my_responses') }}">{{ '← 账号答卷' if owner_view else '← 我的答卷' }}</a>
+<h1>{{ response.get('survey_title') or survey.get('title', '问卷已不可用') }}</h1>
+<p class="answer-meta">{% if owner_view %}<strong>{{ respondent_name }}</strong> · {% endif %}{{ local_time(response.submitted_at) }} 提交 <span class="status">{{ '匿名填写' if response.respondent_id is none else '账号填写' }}</span></p>
+<div class="review-toolbar"><p>优先显示{{ '该账号的' if owner_view else '你的' }}答案，题目仍完整保留。</p><button type="button" data-review-toggle aria-pressed="false">显示全部选项</button></div>
+{% if page_count > 1 %}<p class="statistics-range">显示第 {{ (page - 1) * page_size + 1 }}–{{ [page * page_size, total_questions]|min }} 题，共 {{ total_questions }} 题</p>{% endif %}
+<ol class="answer-review is-compact" data-answer-review>
+  {% for row in rows %}
+    <li>
+      <h2><span class="stat-question-number">{{ row.number }}</span>{{ row.title }}</h2>
+      {% if row.type in ('single_choice', 'multiple_choice') and row.options %}
+        <ul class="review-options" aria-label="本题的全部选项">
+          {% for option in row.options %}
+            {% set selected = option in row.value if row.value is sequence and row.value is not string else option == row.value %}
+            <li class="review-option{{ ' is-selected' if selected else '' }}"><span class="review-option-text">{{ option }}</span>{% if selected %}<span class="review-selected-label">{{ '该账号选择' if owner_view else '你的选择' }}</span>{% endif %}</li>
+          {% endfor %}
+        </ul>
+        {% if row.value is none or row.value == '' or row.value == [] %}<p class="review-unanswered">未填写</p>{% endif %}
+      {% else %}
+        <div class="saved-answer">{% if row.value is none or row.value == '' or row.value == [] %}<span class="hint">未填写</span>{% elif row.value is sequence and row.value is not string %}<ul>{% for value in row.value %}<li>{{ value }}</li>{% endfor %}</ul>{% else %}{{ row.value }}{% endif %}</div>
+      {% endif %}
+    </li>
+  {% endfor %}
+</ol>
+{% if page_count > 1 %}{% set detail_url = url_for('surveys.survey_account_response_detail', survey_id=survey._id, response_id=response._id) if owner_view else url_for('surveys.response_detail', response_id=response._id) %}<nav class="statistics-pages" aria-label="答卷分页">{% if page > 1 %}<a href="{{ detail_url }}?page={{ page-1 }}">← 上一页</a>{% endif %}<span>第 {{ page }} / {{ page_count }} 页</span>{% if page < page_count %}<a href="{{ detail_url }}?page={{ page+1 }}">下一页 →</a>{% endif %}<form method="get" action="{{ detail_url }}"><label>跳到第 <input type="number" name="page" min="1" max="{{ page_count }}" value="{{ page }}" aria-label="答卷页码" required> 页</label><button type="submit">跳转</button></form></nav>{% endif %}
+{% endblock %}

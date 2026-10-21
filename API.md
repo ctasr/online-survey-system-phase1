@@ -1,10 +1,10 @@
 # JSON API 说明与测试
 
-本项目同时提供网页和 `/api/v1` JSON API。两者使用同一个 MongoDB、题目校验器、条件跳转器和统计计算器。所有响应均为 JSON；成功响应和错误响应使用标准 HTTP 状态码。题目 ID 和问卷 ID 均为字符串。
+本项目同时提供网页和 `/api/v1` JSON API。两者使用同一个 MongoDB，以及同一套题目校验、条件跳转和统计代码。API 的响应均为 JSON，并用 HTTP 状态码区分成功与失败。题目 ID 和问卷 ID 均为字符串。
 
 ## 身份验证与请求格式
 
-API 使用与网页相同的登录会话 Cookie。先 `GET /api/v1/csrf`，保存响应 Cookie 和 `csrf_token`。所有 `POST`、`PATCH`、`DELETE` 请求都须发送 `Content-Type: application/json` 和 `X-CSRF-Token: <令牌>`。登录会更新会话，请改用登录响应中的新 `csrf_token`。不允许跨域调用；其他设备可直接访问同一个服务地址。
+API 使用与网页相同的登录会话 Cookie。先 `GET /api/v1/csrf`，保存响应 Cookie 和 `csrf_token`。所有 `POST`、`PATCH`、`DELETE` 请求都须发送 `Content-Type: application/json` 和 `X-CSRF-Token: <令牌>`。登录会更新会话，请改用登录响应中的新 `csrf_token`。项目没有配置浏览器跨域访问；浏览器应从网站同源调用 API，其他设备可访问已部署的公网地址。
 
 未登录访问私人资源返回 401；他人的问卷或答卷返回 404；数据校验失败返回 422；状态、版本或重复填写冲突返回 409；CSRF 错误返回 400。错误响应形如 `{"error":"原因"}`，题目答案校验错误还包含 `question_id`。
 
@@ -71,7 +71,7 @@ print(status, surveys)
 
 ## API 测试用例
 
-运行 `.\.venv\Scripts\python.exe -m unittest tests.test_json_api tests.test_json_api_http -v`。测试使用独立的临时 MongoDB 数据库，结束时删除，不修改正式问卷。`test_json_api_http` 还会在随机本地端口启动服务，通过真实 HTTP、两个独立 CookieJar 测试请求与响应。以下是测试覆盖的主要步骤：
+运行 `.\.venv\Scripts\python.exe -m unittest tests.test_json_api tests.test_json_api_http -v`。测试使用独立的临时 MongoDB 数据库，结束时删除，不修改正式问卷。`test_json_api_http` 还会在随机本地端口启动服务，通过真实 HTTP 和两个独立 CookieJar 测试请求与响应。下表列出主要验证点；逐项输入、实际输出和运行记录见[测试用例与结果](docs/测试用例与结果.md)。
 
 | 步骤 | 输入 | 预期输出 | 实际结果 |
 | --- | --- | --- | --- |
@@ -90,13 +90,3 @@ print(status, surveys)
 | 编辑、关闭、删除 | 修改问卷、关闭后填写、删除 | 更新成功；关闭后 409；答卷随问卷删除 | 通过 |
 
 网页版仍有独立的完整流程测试。运行 `.\.venv\Scripts\python.exe -m unittest discover -s tests -q` 可一起复查。
-
-## 不在同一局域网时分享
-
-本机 `127.0.0.1` 链接只能本机使用。不同网络可选：
-
-1. **短期演示：临时公网隧道。** 在本机启动网页后运行 `cloudflared tunnel --url http://127.0.0.1:5000`，获取随机的 HTTPS `trycloudflare.com` 地址。把问卷的 `/survey/<slug>` 路径接在这个 HTTPS 地址后发给别人。若希望管理页的“复制链接”直接给出正确的 HTTPS 地址，先把 `.env` 的 `PUBLIC_BASE_URL` 设为该临时地址并重启网页服务；隧道地址变更时也须更新。无需自购域名；停止隧道后地址失效。本机、MongoDB 和网页服务须持续运行。它适合课程演示，不适合长期托管。
-2. **长期可访问：带公网地址的服务器或托管平台。** 部署同一份 Flask 代码并配置 MongoDB、会话密钥和 `PUBLIC_BASE_URL`。可以使用平台提供的地址，不一定要购买域名；具体可用地址取决于平台。
-3. **仅同一局域网：** 使用电脑的局域网 IP 加端口，确保 Windows 防火墙允许访问。当前电脑的局域网地址可能随网络变化，不应写死在代码里。
-
-公网隧道是把本机服务向持有链接的人开放。演示时不要使用真实个人信息，结束后关闭隧道。项目当前使用 Flask 本地服务；正式长期对外运行应使用适当的部署方式。

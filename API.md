@@ -31,7 +31,7 @@ API 使用与网页相同的登录会话 Cookie。先 `GET /api/v1/csrf`，保�
 | GET | `/api/v1/responses` | 查看自己的答卷列表 |
 | GET | `/api/v1/responses/<答卷ID>` | 查看自己提交的答卷 |
 
-创建问卷的 JSON 字段为 `title`、`description`、`allow_anonymous`、`allow_multiple_submissions`、`option_label_style`（`numeric` 或 `letters`）和 `deadline`（可选，北京时间 `YYYY-MM-DDTHH:MM`）。创建返回 201、问卷 `id`、`slug`、`public_path`、`public_url`、`revision`。后续修改可带读取到的 `revision`；旧版本返回 409。问卷说明等字段可通过 PATCH 调整，截止时间设为 `null` 表示不设截止时间。
+创建问卷的 JSON 字段为 `title`、`description`、`allow_anonymous`、`allow_multiple_submissions`、`option_label_style`（`numeric` 或 `letters`）和 `deadline`（可选，北京时间 `YYYY-MM-DDTHH:MM`）。创建返回 201、问卷 `id`、`slug`、`public_path`、`public_url`、`revision`。未设置 `PUBLIC_BASE_URL` 时，`public_url` 为 `null`，`share_ready` 为 `false`；`public_path` 仍可用于本站内导航。后续修改可带读取到的 `revision`，旧版本返回 409。问卷说明等字段可通过 PATCH 调整，截止时间设为 `null` 表示不设截止时间。
 
 添加题目的 `type` 支持 `single_choice`、`multiple_choice`、`text`、`number`。`required` 是布尔值。选择题 `options` 是不重复的文字数组；多选可使用 `min_select` / `max_select`，或单独使用 `exact_select`；文本题可使用 `min_length` / `max_length`；数字题可使用 `min_value` / `max_value` / `integer_only`。数字题还可设置 `number_statistics`：`distribution`（默认，页面以答案及人数为主）或 `measure`（页面直接展示均值等）。两种模式的统计 API 都返回 `number_frequencies`、`average`、`median`、`minimum`、`maximum`；模式只影响页面的展示重点，不会改变已存答卷。题目约束与网页相同。
 

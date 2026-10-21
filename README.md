@@ -4,6 +4,8 @@ JSON 接口的请求格式、路径、状态码和独立 API 测试见 [API.md](
 
 交付内容包括 [MongoDB schema](docs/MongoDB-schema.md)、[系统与数据库设计](docs/系统与数据库设计.md)、[API 说明](API.md)、[测试用例与结果](docs/测试用例与结果.md)、[测试截图证据索引](docs/测试截图证据索引.md)、[原始测试运行记录](output/测试运行记录.txt)、[AI 使用记录](docs/AI使用记录.md)和[完成报告](docs/第一阶段完成报告.md)。页面流程截图位于 [output/第一阶段_实际运行流程](output/第一阶段_实际运行流程)，演示问卷的统计截图位于 [output/当前演示问卷](output/当前演示问卷)。
 
+课程提交用的[完成报告 PDF](output/pdf/2026_ECNU_PJ1_1_杨宇轩.pdf)与上述 Markdown 报告内容一致，首页列出代码仓库链接。
+
 当前包含 Flask 项目基础、MongoDB 连接、账号功能，以及问卷的创建、题目配置、条件跳转、发布、登录后填写、答卷校验和统计结果。
 
 ## 环境
@@ -72,7 +74,7 @@ if (!(Test-Path .env)) { Copy-Item .env.example .env }
 - `MONGO_DB_NAME`：本项目使用的数据库名称，默认 `survey_phase1`。
 - `SURVEY_HOST`：服务监听地址，默认 `0.0.0.0`，可通过当前局域网地址访问。
 - `SURVEY_PORT`：服务端口，默认 `5000`。
-- `PUBLIC_BASE_URL`：部署在固定域名时可设置公开地址；未设置时，分享链接采用打开页面时使用的地址。本机地址生成的链接不能发给其他电脑使用。
+- `PUBLIC_BASE_URL`：设置本项目可供其他人访问的公网地址，可以是域名或公网 IP。未设置时，页面不生成可复制的公开链接，API 的 `public_url` 为 `null`；本机 `127.0.0.1` 地址不能作为对外分享链接。
 - `SESSION_DAYS`：同一浏览器的登录有效天数，默认 30。
 - `SECRET_KEY`：可选。若未设置，程序会在 `instance/secret_key` 中自动生成并保存，用于维持登录状态；请保管该文件。
 

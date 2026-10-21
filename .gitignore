@@ -11,7 +11,4 @@ output/demo-statistics/
 output/home-layout/
 *.log
 tools/
-docs/原文件逐项复核.md
-docs/第一阶段提交清单.md
-docs/第一阶段需求与实现对照.md
 render.yaml

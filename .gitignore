@@ -10,12 +10,8 @@ output/*.png
 output/demo-statistics/
 output/home-layout/
 *.log
-tools/*
-!tools/capture_current_statistics.py
-!tools/capture_owner_review.py
-!tools/capture_real_journey.py
-!tools/check_large_ux.py
-!tools/replace_demo_surveys.py
-!tools/seed_all_accounts_answers.py
-!tools/seed_experience_surveys.py
+tools/
+docs/原文件逐项复核.md
+docs/第一阶段提交清单.md
+docs/第一阶段需求与实现对照.md
 render.yaml

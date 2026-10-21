@@ -2,7 +2,7 @@
 
 JSON 接口的请求格式、路径、状态码和独立 API 测试见 [API.md](API.md)。
 
-第一阶段交付材料从 [提交清单](docs/第一阶段提交清单.md) 查看；原文件的逐项核对、证据与尚未验证的边界见 [原文件逐项复核](docs/原文件逐项复核.md)，代码位置见 [需求与实现对照](docs/第一阶段需求与实现对照.md)。包含 [MongoDB schema](docs/MongoDB-schema.md)、[系统与数据库设计](docs/系统与数据库设计.md)、[API 说明](API.md)、[测试用例与结果](docs/测试用例与结果.md)、[测试截图证据索引](docs/测试截图证据索引.md)、[原始测试运行记录](output/测试运行记录.txt)、[AI 使用记录](docs/AI使用记录.md)和[完成报告](docs/第一阶段完成报告.md)。33 张页面流程截图位于 [output/第一阶段_实际运行流程](output/第一阶段_实际运行流程)，新演示问卷的统计截图位于 [output/当前演示问卷](output/当前演示问卷)。
+交付内容包括 [MongoDB schema](docs/MongoDB-schema.md)、[系统与数据库设计](docs/系统与数据库设计.md)、[API 说明](API.md)、[测试用例与结果](docs/测试用例与结果.md)、[测试截图证据索引](docs/测试截图证据索引.md)、[原始测试运行记录](output/测试运行记录.txt)、[AI 使用记录](docs/AI使用记录.md)和[完成报告](docs/第一阶段完成报告.md)。页面流程截图位于 [output/第一阶段_实际运行流程](output/第一阶段_实际运行流程)，演示问卷的统计截图位于 [output/当前演示问卷](output/当前演示问卷)。
 
 当前包含 Flask 项目基础、MongoDB 连接、账号功能，以及问卷的创建、题目配置、条件跳转、发布、登录后填写、答卷校验和统计结果。
 
@@ -21,13 +21,7 @@ python -m venv .venv
 if (!(Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
-先启动 MongoDB。当前课程工作区已有启动脚本，可从本项目目录运行：
-
-```powershell
-& '..\..\start-mongodb.ps1'
-```
-
-其他电脑可启动自己的 MongoDB 服务，并在 `.env` 中填写连接地址。随后运行：
+先启动 MongoDB 服务，并在 `.env` 中填写连接地址。随后运行：
 
 ```powershell
 .\.venv\Scripts\python.exe run.py

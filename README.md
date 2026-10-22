@@ -2,7 +2,7 @@
 
 JSON 接口的请求格式、路径、状态码和独立 API 测试见 [API.md](API.md)。
 
-交付内容包括 [MongoDB schema](docs/MongoDB-schema.md)、[系统与数据库设计](docs/系统与数据库设计.md)、[API 说明](API.md)、[测试用例与结果](docs/测试用例与结果.md)、[测试截图证据索引](docs/测试截图证据索引.md)、[原始测试运行记录](output/测试运行记录.txt)、[AI 使用记录](docs/AI使用记录.md)和[完成报告](docs/第一阶段完成报告.md)。页面流程截图位于 [output/第一阶段_实际运行流程](output/第一阶段_实际运行流程)，演示问卷的统计截图位于 [output/当前演示问卷](output/当前演示问卷)。
+交付内容包括 [MongoDB schema](docs/MongoDB-schema.md)、[系统与数据库设计](docs/系统与数据库设计.md)、[API 说明](API.md)、[测试用例与结果](docs/测试用例与结果.md)、[测试截图证据索引](docs/测试截图证据索引.md)、[原始测试运行记录](output/测试运行记录.txt)和[AI 使用记录](docs/AI使用记录.md)。页面流程截图位于 [output/第一阶段_实际运行流程](output/第一阶段_实际运行流程)，演示问卷的统计截图位于 [output/当前演示问卷](output/当前演示问卷)。
 
 课程平台另行提交项目完成报告 PDF，封面列出本仓库链接。PDF 不放入代码仓库。
 

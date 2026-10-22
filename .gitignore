@@ -9,6 +9,7 @@ output/*.zip
 output/*.png
 output/demo-statistics/
 output/home-layout/
+output/docx/
 *.log
 tools/
 render.yaml

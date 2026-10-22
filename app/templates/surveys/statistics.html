@@ -52,11 +52,11 @@
   </nav>{% endif %}
   {% if historical_results %}
     <details class="historical-statistics" id="historical-statistics" {% if request.args.get('hpage') %}open{% endif %}>
-      <summary>查看历史版本与已移除题目的统计（{{ historical_total }} 个版本）</summary>
+      <summary>查看旧答卷对应的题目统计（{{ historical_total }} 项）</summary>
       {% for result in historical_results %}
         {% include 'surveys/_question_statistics.html' %}
       {% endfor %}
-      {% if historical_pages > 1 %}<nav class="statistics-pages" aria-label="历史版本分页"><span>第 {{ historical_page }} / {{ historical_pages }} 页</span>{% if historical_page > 1 %}<a href="{{ url_for('surveys.statistics', survey_id=survey._id, hpage=historical_page - 1, view=view, q=query, page=page) }}#historical-statistics">← 上一页</a>{% endif %}{% if historical_page < historical_pages %}<a href="{{ url_for('surveys.statistics', survey_id=survey._id, hpage=historical_page + 1, view=view, q=query, page=page) }}#historical-statistics">下一页 →</a>{% endif %}</nav>{% endif %}
+      {% if historical_pages > 1 %}<nav class="statistics-pages" aria-label="旧答卷统计分页"><span>第 {{ historical_page }} / {{ historical_pages }} 页</span>{% if historical_page > 1 %}<a href="{{ url_for('surveys.statistics', survey_id=survey._id, hpage=historical_page - 1, view=view, q=query, page=page) }}#historical-statistics">← 上一页</a>{% endif %}{% if historical_page < historical_pages %}<a href="{{ url_for('surveys.statistics', survey_id=survey._id, hpage=historical_page + 1, view=view, q=query, page=page) }}#historical-statistics">下一页 →</a>{% endif %}</nav>{% endif %}
     </details>
   {% endif %}
 {% endblock %}

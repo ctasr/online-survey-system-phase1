@@ -1,5 +1,5 @@
 <section class="stat-question">
-  <h2><span class="stat-question-number">{{ question_label(result.index) }}</span>{{ result.question.title }}{% if not result.question.required %}<span class="question-optional-label">（选答）</span>{% endif %}{% if result.historical %}<span class="question-type-label">历史版本 {{ result.question.get('version', 1) }}</span>{% endif %}</h2>
+  <h2><span class="stat-question-number">{{ question_label(result.index) }}</span>{{ result.question.title }}{% if not result.question.required %}<span class="question-optional-label">（选答）</span>{% endif %}{% if result.historical %}<span class="question-type-label">旧答卷题目</span>{% endif %}</h2>
   <div class="question-stat-metrics{{ ' is-single-metric' if result.question.required and not result.blank_count else '' }}">
     {% if not result.question.required %}<div><span>包含本题的答卷</span><strong>{{ result.reached_count }}</strong></div>{% endif %}
     <div><span>已回答</span><strong>{{ result.answered_count }}</strong></div>

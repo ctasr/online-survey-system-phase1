@@ -115,7 +115,7 @@ class LiveQuestionEditTests(unittest.TestCase):
         self.assertIn('review-option-text">新A</span><span class="review-selected-label">你的选择', new_review)
         self.assertIn('review-option-text">新B</span>', new_review)
         stats = owner.get(detail + "/statistics").get_data(as_text=True)
-        self.assertIn("会修改的题<span class=\"question-type-label\">历史版本 1</span>", stats)
+        self.assertIn("会修改的题<span class=\"question-type-label\">旧答卷题目</span>", stats)
         self.assertIn('<b class="option-result-marker">1.</b> 旧A</span><strong>1 份 · 100%', stats)
         self.assertIn("改成多选", stats)
         self.assertIn('<b class="option-result-marker">1.</b> 新A</span><strong>1 次 · 100%', stats)
@@ -164,7 +164,7 @@ class LiveQuestionEditTests(unittest.TestCase):
         self.assertIn("保留答案", stale.get_data(as_text=True))
         self.assertNotIn("无效旧答案", stale.get_data(as_text=True))
         stats = owner.get(detail + "/statistics").get_data(as_text=True)
-        self.assertIn("将被删除<span class=\"question-type-label\">历史版本", stats)
+        self.assertIn("将被删除<span class=\"question-type-label\">旧答卷题目", stats)
         self.assertIn("旧答案", stats)
         self.assertEqual(owner.get(detail + "/statistics/" + questions[1]["id"]).status_code, 200)
 

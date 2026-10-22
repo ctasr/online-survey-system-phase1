@@ -20,3 +20,7 @@
 Ran 41 tests in 108.580s
 
 OK
+
+再次核对：2026-10-22，本地独立测试数据库。
+命令：.\.venv\Scripts\python.exe -m unittest discover -s tests -q
+结果：Ran 41 tests in 111.070s；OK；退出码0。

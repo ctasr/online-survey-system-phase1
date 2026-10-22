@@ -10,6 +10,7 @@ output/*.png
 output/demo-statistics/
 output/home-layout/
 output/docx/
+output/pdf/
 *.log
 tools/
 render.yaml

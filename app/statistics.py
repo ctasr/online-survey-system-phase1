@@ -1,5 +1,6 @@
 from collections import Counter
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from .numbering import question_positions
 
 
 def display_number(value):
@@ -12,6 +13,14 @@ def display_number(value):
 
 def display_percent(count, total):
     return display_number(Decimal(count) * 100 / total) if total else "0"
+
+
+def numeric_label(number):
+    """Format a numeric value exactly, without changing the stored raw answer."""
+    if number.is_zero():
+        return "0"
+    label = format(number, "f")
+    return label.rstrip("0").rstrip(".") if "." in label else label
 
 
 def survey_overview(responses):
@@ -34,13 +43,14 @@ def summarize_responses(questions, responses, question_history=None, return_over
     first_submission = last_submission = None
     for old in question_history or []:
         history_by_id.setdefault(old["id"], []).append(old)
-    for index, question in enumerate(questions, start=1):
+    positions = question_positions(questions)
+    for question in questions:
         versions = sorted(history_by_id.get(question["id"], []) + [question],
                           key=lambda item: item.get("version", 1))
         for definition in versions:
             key = (definition["id"], definition.get("version", 1))
             result = {
-                "index": index,
+                "index": positions[question["id"]],
                 "question": definition,
                 "historical": definition is not question or not question.get("active", True),
                 "current_definition": definition is question,
@@ -121,19 +131,19 @@ def summarize_responses(questions, responses, question_history=None, return_over
     for question_id, numbers in numeric_values.items():
         if numbers:
             result = by_id[question_id]
-            frequencies = Counter(result["values"])
-            result["number_frequencies"] = sorted(frequencies.items(),
-                                                   key=lambda item: (-item[1], Decimal(item[0])))
+            frequencies = Counter(numbers)
+            result["number_frequencies"] = [(numeric_label(value), count) for value, count in
+                                           sorted(frequencies.items(), key=lambda item: (-item[1], item[0]))]
             average = sum(numbers, Decimal(0)) / len(numbers)
             ordered = sorted(numbers)
             middle = len(ordered) // 2
             median = ordered[middle] if len(ordered) % 2 else (ordered[middle - 1] + ordered[middle]) / 2
             by_id[question_id].update(
                 average=display_number(average), median=display_number(median),
-                minimum=format(ordered[0].normalize(), "f"),
-                maximum=format(ordered[-1].normalize(), "f"),
+                minimum=numeric_label(ordered[0]),
+                maximum=numeric_label(ordered[-1]),
             )
-    results = [result for result in results if result["current_definition"] or
+    results = [result for result in results if (result["current_definition"] and not result["historical"]) or
                (result["question"]["id"], result["question"].get("version", 1)) in used_versions]
     for result in results:
         result["not_included_count"] = response_count - reached_by_question[result["question"]["id"]]

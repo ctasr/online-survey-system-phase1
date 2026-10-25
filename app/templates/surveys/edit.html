@@ -13,9 +13,10 @@
       <span class="survey-edit-status">{{ {'draft': '草稿', 'published': '已发布', 'closed': '已关闭'}.get(survey.status, survey.status) }}</span>
     </div>
   </div>
-  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  {% include 'surveys/_edit_conflict.html' %}
   <form method="post" class="survey-create-form survey-edit-form" data-warn-unsaved>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="revision" value="{{ survey.get('revision', 1) }}">
     <div class="survey-form-grid">
       <section class="survey-form-panel survey-edit-basics" aria-labelledby="edit-basics-title">
         <div class="survey-edit-section-heading"><span class="survey-edit-section-mark" aria-hidden="true"></span><h2 id="edit-basics-title">标题与说明</h2></div>

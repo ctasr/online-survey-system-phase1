@@ -2,14 +2,14 @@
 {% block title %}{{ '编辑' if question is defined else '添加' }}题目 · {{ survey.title }}{% endblock %}
 {% block main_class %}workspace-page{% endblock %}
 {% block content %}
-  <div class="form-page-heading editor-page-heading"><a href="{{ url_for('surveys.survey_detail', survey_id=survey._id) }}">← 返回问卷</a><div class="editor-title-row"><div><span class="editor-survey-name">{{ survey.title }}</span><h1>{{ '编辑' if question is defined else '添加' }}题目</h1></div></div></div>
-  {% if question is defined and survey.status == 'published' %}
-    <p class="hint">保存后，本题的新版本用于之后的填写；已提交答卷仍按原版本统计。正在填写的人会在提交时收到提示，并重新回答本题。</p>
-  {% endif %}
-  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <div class="form-page-heading editor-page-heading"><a href="{{ url_for('surveys.survey_detail', survey_id=survey._id, _anchor='question-' ~ question.id if question is defined else '') }}">← 返回问卷</a><div class="editor-title-row"><div><span class="editor-survey-name">{{ survey.title }}</span><h1>{{ '编辑' if question is defined else '添加' }}题目</h1></div></div></div>
+  {% if question is not defined %}<p><a href="{{ url_for('bank.choose_question', survey_id=survey._id) }}">从题目库选用已有题目 →</a></p>{% endif %}
+  {% if question is defined and question.library_question_id %}<p class="hint">直接修改仅用于这份草稿，并与原题库版本解除关联。若想以后复用，可先<a href="{{ url_for('bank.question_detail', question_id=question.library_question_id, from_survey=survey._id, from_question=question.id) }}">查看题目库原版本</a>，再决定是否创建新版本。</p>{% endif %}
+  {% include 'surveys/_edit_conflict.html' %}
   <div class="editor-layout">
   <form method="post" class="account-form question-form survey-editor-card" data-question-form data-option-style="{{ option_style(survey) }}" data-warn-unsaved>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="revision" value="{{ survey.get('revision', 1) }}">
     <p class="question-form-context">选项编号使用整份问卷的设置；可在<a href="{{ url_for('surveys.edit_survey', survey_id=survey._id) }}">问卷信息</a>中调整。</p>
     <label for="question-type">题型</label>
     <select id="question-type" name="type" required>
@@ -58,7 +58,7 @@
         <option value="measure" {% if form.get('number_statistics') == 'measure' %}selected{% endif %}>数值测量（适合年龄、时长等，显示平均值与范围）</option>
       </select>
     </div>
-    <div class="editor-actions"><button type="submit" class="primary-button">{{ '保存修改' if question is defined else '保存题目' }}</button>{% if question is not defined %}<button class="secondary-button" type="submit" name="after_save" value="another">保存并继续添加</button>{% endif %}<a data-discard-changes href="{{ url_for('surveys.survey_detail', survey_id=survey._id) }}">取消</a></div>
+    <div class="editor-actions"><button type="submit" class="primary-button">{{ '保存修改' if question is defined else '保存题目' }}</button>{% if question is not defined %}<button class="secondary-button" type="submit" name="after_save" value="another">保存并继续添加</button>{% endif %}<a data-discard-changes href="{{ url_for('surveys.survey_detail', survey_id=survey._id, _anchor='question-' ~ question.id if question is defined else '') }}">取消</a></div>
   </form>
   <aside class="question-preview" data-question-preview hidden><div class="preview-heading"><span>填写预览</span><span data-preview-type></span></div><h2 data-preview-title></h2><div data-preview-options></div><p class="hint" data-preview-rules></p></aside>
   </div>

@@ -124,7 +124,7 @@ a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visib
 .question-fields > label:not(:first-child) { margin-top:14px; }
 .survey-titlebar h1 { font-size:28px; }
 .survey-details { gap:10px; }
-.survey-details div { border:1px solid #ece9f4; background:#faf9fd !important; }
+.survey-details div { border:1px solid #ece9f4; background:#faf9fd; }
 .content-page .question-list { padding-left:0; list-style-position:inside; }
 .content-page .question-list > li { padding:22px; border-left:3px solid #b7a8e0; border-radius:12px; }
 .question-list > li > strong { font-size:18px; }
@@ -201,8 +201,8 @@ body { background:radial-gradient(circle at 100% 0,#eeeaff 0,transparent 35%),ra
 .content-page { background:linear-gradient(180deg,#fff 0,#fff 70%,#fcfbff 100%); }
 .survey-titlebar { padding-bottom:20px; border-bottom:1px solid #ece9f3; }
 .survey-titlebar h1 { overflow-wrap:anywhere; }
-.survey-details div { border-left:3px solid #8e79d6 !important; }
-.survey-details div:nth-child(even) { border-left-color:#56ad9b !important; }
+.survey-details div { border-left:3px solid #8e79d6; }
+.survey-details div:nth-child(even) { border-left-color:#56ad9b; }
 .question-index { gap:8px; }
 .question-index a { border:1px solid #e4dcf5; background:#f6f2ff; color:#5e4eb0; border-radius:9px; }
 .question-index a:hover { background:#ede5ff; }
@@ -564,8 +564,8 @@ body { background:radial-gradient(circle at 6% 16%,#e8f5f1 0,transparent 27%),ra
 .survey-main-actions .primary-button,.survey-main-actions .secondary-button { min-height:39px; margin:0; }
 .survey-link-row { border-color:#d5e8e1; border-left:4px solid #31a18c; background:#f5fbf8; }
 .survey-link-row button { border-color:#b8dcd1; color:#167b67; background:#fff; }
-.content-page .survey-details div { background:#f7f5fc !important; border-left:3px solid #7a65cf !important; }
-.content-page .survey-details div:nth-child(even) { background:#eff8f5 !important; border-left-color:#31a18c !important; }
+.content-page .survey-details div { background:#f7f5fc; border-left:3px solid #7a65cf; }
+.content-page .survey-details div:nth-child(even) { background:#eff8f5; border-left-color:#31a18c; }
 .content-page .question-list > li { border:1px solid #e6e1ef; border-left:4px solid #8975d4; background:#fff; box-shadow:0 7px 20px #362e6810; }
 .content-page .question-list > li:nth-child(even) { border-left-color:#3aa58f; }
 .response-page .response-question { background:#fff; border-color:#e2deeb; border-left:4px solid #7561cc; }

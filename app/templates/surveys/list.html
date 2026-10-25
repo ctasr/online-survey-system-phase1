@@ -6,7 +6,7 @@
     <h1>我的问卷 <span class="count-badge">{{ total }}</span></h1>
     <a class="primary-link" href="{{ url_for('surveys.create_survey') }}">创建问卷 <span aria-hidden="true">→</span></a>
   </div>
-  <form method="get" class="survey-filters"><label for="survey-search">查找问卷 <input id="survey-search" type="search" name="q" value="{{ title_query }}" placeholder="输入问卷标题"></label><label for="survey-status-filter">状态 <select id="survey-status-filter" name="status"><option value="">全部</option>{% for status in ['草稿', '已发布', '已截止', '已关闭'] %}<option value="{{ status }}" {% if status_filter == status %}selected{% endif %}>{{ status }}</option>{% endfor %}</select></label><button type="submit">查找</button>{% if title_query or status_filter %}<a href="{{ url_for('surveys.my_surveys') }}">清除筛选</a>{% endif %}</form>
+  <form method="get" class="survey-filters"><label for="survey-search">查找问卷 <input id="survey-search" type="search" name="q" value="{{ title_query }}" placeholder="输入问卷标题"></label><label for="survey-status-filter">状态 <select id="survey-status-filter" name="status"><option value="">全部</option>{% for status in ['草稿', '已发布', '已截止', '已关闭'] %}<option value="{{ status }}" {% if status_filter == status %}selected{% endif %}>{{ status }}</option>{% endfor %}</select></label><button type="submit">查找</button>{% if title_query or status_filter %}<a href="{{ url_for('surveys.my_surveys', _reset_list=True) }}">清除筛选</a>{% endif %}</form>
   {% if surveys %}
     <ul class="survey-list">
       {% for survey in surveys %}
@@ -19,14 +19,14 @@
           <div class="survey-list-actions">
             <a class="survey-manage-link" href="{{ url_for('surveys.survey_detail', survey_id=survey._id) }}">管理问卷</a>
             {% if survey.visible_question_count %}<a href="{{ url_for('surveys.statistics', survey_id=survey._id) }}">统计结果</a>{% endif %}
-            {% if status_text(survey) == '已发布' %}<button type="button" data-copy-url="{{ url_for('surveys.public_survey', slug=survey.slug, _external=True) }}">复制填写链接</button><span class="copy-feedback" data-copy-feedback role="status"></span>{% endif %}
-            <form method="post" action="{{ url_for('surveys.delete_survey', survey_id=survey._id) }}" data-confirm-title="删除问卷？" data-confirm-message="“{{ survey.title }}”及其全部答卷和统计将永久删除，无法恢复。" data-confirm-label="删除问卷"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="survey-delete-button">删除</button></form>
+            {% if status_text(survey) == '已发布' %}{% if survey.share_scope == 'public' %}<button type="button" data-copy-url="{{ survey.share_url }}">复制填写链接</button><span class="copy-feedback" data-copy-feedback role="status"></span>{% else %}<a href="{{ url_for('surveys.public_survey', slug=survey.slug) }}">在本机填写</a>{% endif %}{% endif %}
+            <form method="post" action="{{ url_for('surveys.delete_survey', survey_id=survey._id) }}" data-confirm-title="删除问卷？" data-confirm-message="“{{ survey.title }}”及其全部答卷和统计将永久删除，无法恢复。" data-confirm-label="删除问卷"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="return_to" value="survey_list"><input type="hidden" name="q" value="{{ title_query }}"><input type="hidden" name="status" value="{{ status_filter }}"><input type="hidden" name="page" value="{{ page }}"><input type="hidden" name="revision" value="{{ survey.get('revision', 1) }}"><input type="hidden" name="expected_status" value="{{ survey.status }}"><button type="submit" class="survey-delete-button">删除</button></form>
           </div>
         </li>
       {% endfor %}
     </ul>
     {% if pages > 1 %}<nav class="statistics-pages" aria-label="问卷分页">{% if page > 1 %}<a href="{{ url_for('surveys.my_surveys', page=page-1, q=title_query, status=status_filter) }}">← 上一页</a>{% endif %}<span>第 {{ page }} / {{ pages }} 页</span>{% if page < pages %}<a href="{{ url_for('surveys.my_surveys', page=page+1, q=title_query, status=status_filter) }}">下一页 →</a>{% endif %}<form method="get"><input type="hidden" name="q" value="{{ title_query }}"><input type="hidden" name="status" value="{{ status_filter }}"><label>跳到第 <input type="number" name="page" min="1" max="{{ pages }}" value="{{ page }}" required> 页</label><button type="submit">跳转</button></form></nav>{% endif %}
   {% else %}
-    <div class="empty-state"><h2>{{ '没有找到符合条件的问卷' if title_query or status_filter else '还没有问卷' }}</h2>{% if title_query or status_filter %}<a class="primary-link" href="{{ url_for('surveys.my_surveys') }}">清除筛选</a>{% else %}<p>点击上方“创建问卷”开始。</p>{% endif %}</div>
+    <div class="empty-state"><h2>{{ '没有找到符合条件的问卷' if title_query or status_filter else '还没有问卷' }}</h2>{% if title_query or status_filter %}<a class="primary-link" href="{{ url_for('surveys.my_surveys', _reset_list=True) }}">清除筛选</a>{% else %}<p>点击上方“创建问卷”开始。</p>{% endif %}</div>
   {% endif %}
 {% endblock %}

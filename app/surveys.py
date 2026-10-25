@@ -1,9 +1,11 @@
+from werkzeug.exceptions import Conflict
 import secrets
 import hashlib
 import hmac
 import re
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation
 
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -11,11 +13,12 @@ from flask import Blueprint, abort, current_app, flash, g, jsonify, redirect, re
 from itsdangerous import BadSignature, URLSafeSerializer
 from pymongo.errors import DuplicateKeyError
 from werkzeug.datastructures import MultiDict
+from werkzeug.exceptions import HTTPException
 
 from .auth import login_required
 from .db import get_db
 from .jumps import MULTI_MODES, NUMBER_OPERATORS, build_jump_rule, jump_warnings, next_question_index
-from .numbering import option_style
+from .numbering import option_style, question_positions
 from .questions import QUESTION_TYPES, build_question, validate_answer
 from .security import valid_csrf
 from .sharing import survey_link
@@ -23,7 +26,53 @@ from .statistics import display_percent, summarize_responses, survey_overview
 
 
 surveys_bp = Blueprint("surveys", __name__)
+
+
+def statistics_navigation():
+    context = {}
+    if request.args.get("stats_view") in ("table", "cards"):
+        context["stats_view"] = request.args["stats_view"]
+    if "stats_q" in request.args:
+        context["stats_q"] = request.args["stats_q"][:1000]
+    for key in ("stats_page", "stats_hpage", "stats_answer_page"):
+        if key in request.args:
+            context[key] = min(100000, max(1, request.args.get(key, 1, type=int) or 1))
+    return context
+
+
+def statistics_overview_url(survey_id, context):
+    return url_for("surveys.statistics", survey_id=survey_id,
+                   **{key.removeprefix("stats_"): value for key, value in context.items()
+                      if key in ("stats_view", "stats_q", "stats_page", "stats_hpage")})
+
+
+def text_answer_key(value):
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 CHINA_TIME = timezone(timedelta(hours=8))
+EDIT_CONFLICT_MESSAGE = "这份问卷已在其他页面修改，本次尚未保存。你的输入已保留，请核对最新内容后再保存。"
+
+
+def form_revision_conflict(survey):
+    submitted = request.form.get("revision")
+    return submitted is not None and submitted != str(survey.get("revision", 1))
+
+
+def lifecycle_form_conflict(survey):
+    return (form_revision_conflict(survey)
+            or request.form.get("expected_status", survey["status"]) != survey["status"])
+
+
+def lifecycle_feedback(survey_id, message, *, desired_status=None):
+    latest = get_db().surveys.find_one({"_id": ObjectId(survey_id), "owner_id": g.user["_id"]})
+    if latest is None:
+        flash("问卷已在其他页面删除，本次没有再次操作。", "info")
+        return redirect(url_for("surveys.my_surveys"))
+    if desired_status and latest["status"] == desired_status:
+        flash("问卷已经发布，无需重复发布。" if desired_status == "published"
+              else "问卷已经关闭，无需再次关闭。", "info")
+        return redirect(url_for("surveys.survey_detail", survey_id=survey_id))
+    flash(message, "error")
+    return survey_detail(survey_id), 409
 
 
 def local_time(value):
@@ -42,7 +91,7 @@ def status_text(survey):
     return {"draft": "草稿", "published": "已发布", "closed": "已关闭"}[survey["status"]]
 
 
-def parse_deadline(raw):
+def parse_deadline(raw, *, allow_past=False):
     if not raw:
         return None
     try:
@@ -52,7 +101,7 @@ def parse_deadline(raw):
     if chosen.tzinfo is not None:
         raise ValueError("截止时间格式不正确。")
     deadline = chosen.replace(tzinfo=CHINA_TIME).astimezone(timezone.utc)
-    if deadline <= datetime.now(timezone.utc):
+    if not allow_past and deadline <= datetime.now(timezone.utc):
         raise ValueError("截止时间必须晚于当前时间。")
     return deadline
 
@@ -92,6 +141,8 @@ def save_questions(survey, questions, history=None, option_label_style=None):
 def previous_version(question, history):
     history.append(deepcopy(question))
     question["version"] = question.get("version", 1) + 1
+    if question.get("library_question_id"):
+        question["library_source_question_version"] = question["version"]
 
 
 def survey_snapshot(survey):
@@ -314,16 +365,68 @@ def response_detail(response_id):
 
 
 def render_response_detail(response, survey, *, owner_view=False, respondent_name=None):
+    # Keep list navigation separate from the page of questions within an answer.
+    list_context = {
+        "list_page": max(1, request.args.get("list_page", 1, type=int) or 1),
+        "q": request.args.get("q", "").strip()[:80 if owner_view else 100],
+    }
+    if owner_view:
+        list_context.update(statistics_navigation())
+    origin_question = request.args.get("origin_question", "") if owner_view else ""
+    origin_version = max(1, request.args.get("version", 1, type=int) or 1)
+    origin = next((q for q in survey.get("question_history", []) + survey.get("questions", [])
+                   if q["id"] == origin_question and q.get("version", 1) == origin_version), None)
+    if origin is not None:
+        list_context.update(origin_question=origin_question, version=origin_version,
+                            q=request.args.get("q", "").strip()[:1000])
+        list_context.update(statistics_navigation())
+        answer_key = request.args.get("answer_key", "")
+        if origin["type"] == "text" and re.fullmatch(r"[0-9a-f]{64}", answer_key):
+            list_context.update(answer_key=answer_key, q="")
+        option = request.args.get("option", type=int)
+        if origin["type"] in ("single_choice", "multiple_choice") and option is not None and 0 <= option < len(origin.get("options", [])):
+            list_context["option"] = option
+        if request.args.get("exact") == "1":
+            list_context["exact"] = "1"
+    if not owner_view:
+        submitted_on = request.args.get("date", "").strip()
+        try:
+            datetime.strptime(submitted_on, "%Y-%m-%d")
+        except ValueError:
+            submitted_on = ""
+        list_context["date"] = submitted_on
+    return_args = {key: value for key, value in list_context.items() if key != "list_page"}
+    return_args["page"] = list_context["list_page"]
+    if owner_view:
+        if origin is not None:
+            return_args.pop("origin_question")
+            back_url = url_for("surveys.question_account_responses", survey_id=survey["_id"],
+                               question_id=origin_question, **return_args)
+        else:
+            back_url = url_for("surveys.survey_account_responses", survey_id=survey["_id"], **return_args)
+        detail_url = url_for("surveys.survey_account_response_detail", survey_id=survey["_id"],
+                             response_id=response["_id"], **list_context)
+    else:
+        back_url = url_for("surveys.my_responses", **return_args)
+        detail_url = url_for("surveys.response_detail", response_id=response["_id"], **list_context)
+    show_all_options = request.args.get("options") == "all"
+    if show_all_options:
+        detail_url += "&options=all"
     definitions = {(q["id"], q.get("version", 1)): q for q in
                    survey.get("question_history", []) + survey.get("questions", [])}
-    question_numbers = {question["id"]: index for index, question in
-                        enumerate(survey.get("questions", []), start=1)}
+    question_definitions = survey.get("questions", [])
+    removed_ids = {question["id"] for question in question_definitions if not question.get("active", True)}
+    historical_question_order = any(answer.get("question_id") in removed_ids
+                                    for answer in response.get("answers", []))
+    question_numbers = ({question["id"]: index for index, question in enumerate(question_definitions, 1)}
+                        if historical_question_order else question_positions(question_definitions))
     rows = []
     for answer in response.get("answers", []):
         question = definitions.get((answer["question_id"], answer.get("question_version", 1)), {})
         rows.append({
             "number": question_numbers.get(answer["question_id"], len(rows) + 1),
             "title": question.get("title", "题目内容已不可用"),
+            "removed": answer["question_id"] in removed_ids,
             "type": question.get("type"),
             "options": question.get("options", []),
             "value": answer.get("value"),
@@ -331,11 +434,15 @@ def render_response_detail(response, survey, *, owner_view=False, respondent_nam
     page_size = 20
     page_count = max(1, (len(rows) + page_size - 1) // page_size)
     page = min(max(request.args.get("page", 1, type=int) or 1, 1), page_count)
+    page_rows = rows[(page - 1) * page_size:page * page_size]
     return render_template("surveys/response_detail.html", response=response, survey=survey,
-                           rows=rows[(page - 1) * page_size:page * page_size],
+                           rows=page_rows, historical_question_order=historical_question_order, has_choice_answers=any(row["options"] for row in page_rows),
                            total_questions=len(rows), page=page, page_count=page_count,
                            page_size=page_size, local_time=local_time,
-                           owner_view=owner_view, respondent_name=respondent_name)
+                           owner_view=owner_view, respondent_name=respondent_name,
+                           back_url=back_url, detail_url=detail_url, list_context=list_context,
+                           show_all_options=show_all_options,
+                           back_label="本题账号回答" if origin is not None else "账号答卷" if owner_view else "我的答卷")
 
 
 def already_submitted(survey):
@@ -368,9 +475,13 @@ def my_surveys():
     total = get_db().surveys.count_documents(query)
     pages = max(1, (total + 19) // 20)
     page = min(max(request.args.get("page", 1, type=int), 1), pages)
-    surveys = list(get_db().surveys.find(query).sort("created_at", -1).skip((page - 1) * 20).limit(20))
+    g.survey_list_context = ({"survey_list_q": title_query, "survey_list_status": status_filter, "survey_list_page": page}
+                             if title_query or status_filter or page > 1 else {})
+    surveys = list(get_db().surveys.find(query).sort([("created_at", -1), ("_id", -1)])
+                   .skip((page - 1) * 20).limit(20))
     for survey in surveys:
         survey["visible_question_count"] = len(active_questions(survey))
+        survey["share_url"], survey["share_scope"] = survey_link(url_for("surveys.public_survey", slug=survey["slug"]))
     return render_template(
         "surveys/list.html", surveys=surveys, total=total, page=page, pages=pages,
         title_query=title_query, status_filter=status_filter,
@@ -446,7 +557,7 @@ def create_survey():
 
 @surveys_bp.get("/surveys/<survey_id>")
 @login_required
-def survey_detail(survey_id):
+def survey_detail(survey_id, *, deadline_error=None, deadline_value=None, deadline_conflict=False):
     survey = owned_survey(survey_id)
     visible = active_questions(survey)
     reviews = jump_warnings(visible)
@@ -454,6 +565,9 @@ def survey_detail(survey_id):
     share_url, share_scope = survey_link(public_path)
     return render_template(
         "surveys/detail.html", survey=survey,
+        deadline_error=deadline_error, deadline_conflict=deadline_conflict,
+        deadline_value=deadline_value if deadline_value is not None else
+                       local_time(survey["deadline"]).replace(" ", "T") if survey.get("deadline") else "",
         share_url=share_url, share_scope=share_scope, public_path=public_path,
         visible_questions=visible, jump_warnings=reviews,
         warning_count=sum(len(items) for items in reviews.values()),
@@ -470,13 +584,23 @@ def delete_survey(survey_id):
     if not valid_csrf():
         abort(400)
     survey = owned_survey(survey_id)
-    removed = get_db().surveys.delete_one({"_id": survey["_id"], "owner_id": g.user["_id"]})
+    if lifecycle_form_conflict(survey):
+        return lifecycle_feedback(survey_id, "问卷已在其他页面修改，本次尚未删除。请核对当前问卷后再操作。")
+    removed = get_db().surveys.delete_one({
+        "_id": survey["_id"], "owner_id": g.user["_id"], "status": survey["status"],
+        "revision": survey["revision"] if "revision" in survey else {"$exists": False},
+    })
     if not removed.deleted_count:
-        abort(409)
+        return lifecycle_feedback(survey_id, "问卷刚刚发生变化，本次尚未删除。请核对当前内容后重试。")
     get_db().responses.delete_many({"survey_id": survey["_id"]})
     get_db().response_drafts.delete_many({"survey_id": survey["_id"]})
     flash("问卷及其答卷已删除。", "success")
-    return redirect(url_for("surveys.my_surveys"))
+    context = {}
+    if request.form.get("return_to") == "survey_list":
+        context = {"q": request.form.get("q", "").strip()[:100],
+                   "status": request.form.get("status", ""),
+                   "page": min(100000, max(1, request.form.get("page", 1, type=int) or 1))}
+    return redirect(url_for("surveys.my_surveys", **context))
 
 
 @surveys_bp.route("/surveys/<survey_id>/edit", methods=["GET", "POST"])
@@ -491,6 +615,7 @@ def edit_survey(survey_id):
     repeat_policy = "multiple" if survey.get("allow_multiple_submissions", True) else "once"
     option_label_style = option_style(survey)
     error = None
+    conflict = False
     if request.method == "POST":
         if not valid_csrf():
             abort(400)
@@ -507,7 +632,10 @@ def edit_survey(survey_id):
             or option_label_style != option_style(survey)
         )
         deadline_changed = survey["status"] != "closed" and deadline_text != original_deadline_text
-        if not title:
+        conflict = form_revision_conflict(survey)
+        if conflict:
+            error = EDIT_CONFLICT_MESSAGE
+        elif not title:
             error = "问卷标题不能为空。"
         elif repeat_policy not in ("multiple", "once"):
             error = "请选择正确的重复填写规则。"
@@ -542,13 +670,18 @@ def edit_survey(survey_id):
                 if repeat_policy == "once" and survey.get("allow_multiple_submissions", True):
                     changes["repeat_policy_epoch"] = survey.get("repeat_policy_epoch", 0) + 1
             if not get_db().surveys.update_one(query, update).modified_count:
-                abort(409)
-            flash("问卷信息已保存。正在填写的人会在提交时收到变更提示。", "success")
-            return redirect(url_for("surveys.survey_detail", survey_id=survey_id))
+                error = EDIT_CONFLICT_MESSAGE
+                conflict = True
+            else:
+                flash("问卷信息已保存。正在填写的人会在提交时收到变更提示。", "success")
+                return redirect(url_for("surveys.survey_detail", survey_id=survey_id))
+    if conflict:
+        survey = owned_survey(survey_id)
     return render_template("surveys/edit.html", survey=survey, title=title,
                            description=description, deadline_text=deadline_text,
                            allow_anonymous=allow_anonymous,
-                            repeat_policy=repeat_policy, option_label_style=option_label_style, error=error)
+                            repeat_policy=repeat_policy, option_label_style=option_label_style,
+                            error=error, conflict=conflict), 409 if conflict else 200
 
 
 @surveys_bp.route("/surveys/<survey_id>/preview", methods=["GET", "POST"])
@@ -608,8 +741,19 @@ def preview_assess(survey_id):
 @login_required
 def add_question(survey_id):
     survey = owned_survey(survey_id)
-    if survey["status"] not in ("draft", "published"):
-        abort(409)
+    if survey["status"] != "draft":
+        if request.method == "POST":
+            if not valid_csrf():
+                abort(400)
+            return render_template("library/form.html", source=None, form=request.form,
+                                   error="问卷已发布或关闭，不能再添加题目。本次输入已保留，尚未保存；可以另存到题目库。",
+                                   question_types=QUESTION_TYPES,
+                                   preview_option_style=option_style(survey),
+                                   form_action=url_for("bank.create_question"),
+                                   return_url=url_for("surveys.survey_detail", survey_id=survey_id),
+                                   return_label="返回原问卷"), 409
+        flash("问卷已发布或关闭，不能再添加题目。", "error")
+        return redirect(url_for("surveys.survey_detail", survey_id=survey_id))
     error = None
     if request.method == "POST":
         if not valid_csrf():
@@ -626,11 +770,25 @@ def add_question(survey_id):
             question["active"] = True
             questions = survey.get("questions", [])
             questions.append(question)
-            save_questions(survey, questions, option_label_style=option_label_style)
+            try:
+                save_questions(survey, questions, option_label_style=option_label_style)
+            except HTTPException as problem:
+                if problem.code != 409:
+                    raise
+                latest = get_db().surveys.find_one({"_id": survey["_id"], "owner_id": g.user["_id"]})
+                if latest and latest["status"] == "draft":
+                    return render_template("surveys/question_new.html", survey=latest,
+                                           error=EDIT_CONFLICT_MESSAGE, conflict=True,
+                                           form=request.form, question_types=QUESTION_TYPES), 409
+                return render_template("library/form.html", source=None, form=request.form,
+                                       error="原问卷已无法添加题目。本次输入已保留，尚未保存；可以另存到题目库。",
+                                       question_types=QUESTION_TYPES,
+                                       preview_option_style=option_label_style,
+                                       form_action=url_for("bank.create_question")), 409
             flash("题目已添加。", "success")
             if request.form.get("after_save") == "another":
                 return redirect(url_for("surveys.add_question", survey_id=survey_id))
-            return redirect(url_for("surveys.survey_detail", survey_id=survey_id))
+            return redirect(url_for("surveys.survey_detail", survey_id=survey_id, _anchor="question-" + question["id"]))
     return render_template(
         "surveys/question_new.html", survey=survey, error=error,
         form=request.form, question_types=QUESTION_TYPES,
@@ -641,18 +799,37 @@ def add_question(survey_id):
 @login_required
 def edit_question(survey_id, question_id):
     survey = owned_survey(survey_id)
-    if survey["status"] not in ("draft", "published"):
-        abort(409)
     questions = survey.get("questions", [])
     index = next((i for i, q in enumerate(questions) if q["id"] == question_id and q.get("active", True)), None)
     if index is None:
         abort(404)
     original = questions[index]
+    if survey["status"] != "draft":
+        if request.method == "POST" and not valid_csrf():
+            abort(400)
+        # Keep unfinished input, but route any explicit save to the library only.
+        source = get_db().question_library.find_one({
+            "_id": original.get("library_question_id"), "owner_id": g.user["_id"]})
+        context = {"from_survey": survey_id, "from_question": question_id}
+        message = "问卷已发布，不能再修改其中的题目。本次输入已保留，尚未保存。" if request.method == "POST" else "问卷已发布，不能再修改其中的题目。"
+        message += "可另存为题库新版本，原问卷不受影响。" if source else "可另存到题目库，原问卷不受影响。"
+        return render_template("library/form.html", source=source,
+                               form=request.form if request.method == "POST" else question_form_values(original),
+                               error=message, question_types=QUESTION_TYPES, context_args=context,
+                               preview_option_style=option_style(survey),
+                               form_action=url_for("bank.new_version", question_id=source["_id"], **context)
+                               if source else url_for("bank.create_question"),
+                               return_url=url_for("surveys.survey_detail", survey_id=survey_id) + f"#question-{question_id}",
+                               return_label="返回原问卷"), 409
     error = None
+    conflict = False
     if request.method == "POST":
         if not valid_csrf():
             abort(400)
         try:
+            conflict = form_revision_conflict(survey)
+            if conflict:
+                raise ValueError(EDIT_CONFLICT_MESSAGE)
             option_label_style = request.form.get("option_label_style", option_style(survey))
             if option_label_style not in ("numeric", "letters"):
                 raise ValueError("请选择正确的选项编号样式。")
@@ -660,43 +837,68 @@ def edit_question(survey_id, question_id):
         except ValueError as problem:
             error = str(problem)
         else:
-            old_content = {key: value for key, value in original.items()
-                           if key not in ("id", "version", "active", "jumps")}
-            new_content = {key: value for key, value in replacement.items() if key != "id"}
-            if original["type"] == "number":
-                old_content.setdefault("number_statistics", "distribution")
-            option_style_changed = option_label_style != option_style(survey)
-            if new_content == old_content and not option_style_changed:
-                flash("题目内容没有变化。", "success")
-                return redirect(url_for("surveys.survey_detail", survey_id=survey_id))
-            if new_content == old_content:
-                save_questions(survey, questions, option_label_style=option_label_style)
-                flash("选项编号已更新。", "success")
-                return redirect(url_for("surveys.survey_detail", survey_id=survey_id))
-            if (original["type"] == "number" and replacement["type"] == "number"
-                    and {k: v for k, v in new_content.items() if k != "number_statistics"}
-                    == {k: v for k, v in old_content.items() if k != "number_statistics"}):
-                original["number_statistics"] = replacement["number_statistics"]
-                save_questions(survey, questions, option_label_style=option_label_style)
-                flash("统计方式已更新，已有答卷会按新方式显示。", "success")
-                return redirect(url_for("surveys.survey_detail", survey_id=survey_id))
-            history = list(survey.get("question_history", []))
-            previous_version(original, history)
-            replacement["id"] = question_id
-            replacement["version"] = original["version"]
-            replacement["active"] = True
-            replacement["jumps"] = original.get("jumps", [])
-            questions[index] = replacement
-            save_questions(survey, questions, history, option_label_style=option_label_style)
-            message = "题目已更新；正在填写的人会在提交时收到提示，并重新回答这道题。" if survey["status"] == "published" else "题目已更新。"
-            warning_count = sum(map(len, jump_warnings(active_questions({"questions": questions})).values()))
-            if warning_count:
-                message += f" 当前还有 {warning_count} 条跳转提醒，请在问卷详情中查看。"
-            flash(message, "success")
-            return redirect(url_for("surveys.survey_detail", survey_id=survey_id))
+            try:
+                old_content = {key: value for key, value in original.items()
+                               if key not in ("id", "version", "active", "jumps", "library_question_id", "library_root_id", "library_version", "library_source_question_version")}
+                new_content = {key: value for key, value in replacement.items() if key != "id"}
+                if original["type"] == "number":
+                    old_content.setdefault("number_statistics", "distribution")
+                option_style_changed = option_label_style != option_style(survey)
+                if new_content == old_content and not option_style_changed:
+                    flash("题目内容没有变化。", "success")
+                    return redirect(url_for("surveys.survey_detail", survey_id=survey_id, _anchor="question-" + question_id))
+                if new_content == old_content:
+                    save_questions(survey, questions, option_label_style=option_label_style)
+                    flash("选项编号已更新。", "success")
+                    return redirect(url_for("surveys.survey_detail", survey_id=survey_id, _anchor="question-" + question_id))
+                if (original["type"] == "number" and replacement["type"] == "number"
+                        and {k: v for k, v in new_content.items() if k != "number_statistics"}
+                        == {k: v for k, v in old_content.items() if k != "number_statistics"}):
+                    original["number_statistics"] = replacement["number_statistics"]
+                    save_questions(survey, questions, option_label_style=option_label_style)
+                    flash("统计方式已更新，已有答卷会按新方式显示。", "success")
+                    return redirect(url_for("surveys.survey_detail", survey_id=survey_id, _anchor="question-" + question_id))
+                history = list(survey.get("question_history", []))
+                previous_version(original, history)
+                replacement["id"] = question_id
+                replacement["version"] = original["version"]
+                replacement["active"] = True
+                replacement["jumps"] = original.get("jumps", [])
+                questions[index] = replacement
+                save_questions(survey, questions, history, option_label_style=option_label_style)
+                message = "题目已更新。"
+                warning_count = sum(map(len, jump_warnings(active_questions({"questions": questions})).values()))
+                if warning_count:
+                    message += f" 当前还有 {warning_count} 条跳转提醒，请在问卷详情中查看。"
+                flash(message, "success")
+                return redirect(url_for("surveys.survey_detail", survey_id=survey_id, _anchor="question-" + question_id))
+            except HTTPException as problem:
+                if problem.code != 409:
+                    raise
+                latest = get_db().surveys.find_one({"_id": survey["_id"], "owner_id": g.user["_id"]})
+                latest_question = next((item for item in active_questions(latest)
+                                        if item["id"] == question_id), None) if latest else None
+                if latest and latest["status"] == "draft" and latest_question:
+                    return render_template("surveys/question_new.html", survey=latest,
+                                           question=latest_question, form=request.form,
+                                           error=EDIT_CONFLICT_MESSAGE, conflict=True,
+                                           question_types=QUESTION_TYPES), 409
+                source = get_db().question_library.find_one({
+                    "_id": original.get("library_question_id"), "owner_id": g.user["_id"]})
+                context = {"from_survey": survey_id, "from_question": question_id} if latest else {}
+                return render_template("library/form.html", source=source, form=request.form,
+                    error="原问卷或题目已发生变化，本次输入已保留，尚未保存。"
+                          + ("可另存为题库新版本，原问卷不受影响。" if source else "可另存到题目库，原问卷不受影响。"),
+                    question_types=QUESTION_TYPES, context_args=context,
+                    preview_option_style=option_label_style,
+                    form_action=url_for("bank.new_version", question_id=source["_id"], **context)
+                                if source else url_for("bank.create_question"),
+                    return_url=url_for("surveys.survey_detail", survey_id=survey_id,
+                                       _anchor="question-" + question_id) if latest else url_for("bank.library"),
+                    return_label="返回原问卷" if latest else "返回题目库"), 409
     return render_template("surveys/question_new.html", survey=survey, question=original,
                            form=request.form if request.method == "POST" else question_form_values(original),
-                           error=error, question_types=QUESTION_TYPES)
+                           error=error, conflict=conflict, question_types=QUESTION_TYPES), 409 if conflict else 200
 
 
 @surveys_bp.post("/surveys/<survey_id>/questions/<question_id>/delete")
@@ -705,16 +907,19 @@ def delete_question(survey_id, question_id):
     if not valid_csrf():
         abort(400)
     survey = owned_survey(survey_id)
-    if survey["status"] not in ("draft", "published"):
+    if survey["status"] != "draft":
         abort(409)
+    if form_revision_conflict(survey):
+        return lifecycle_feedback(survey_id, "题目已在其他页面修改，本次尚未删除。请核对最新内容后再操作。")
     questions = survey.get("questions", [])
     target = next((q for q in questions if q["id"] == question_id and q.get("active", True)), None)
     if target is None:
         abort(404)
-    if len(active_questions(survey)) <= 1 and survey["status"] == "published":
-        flash("已发布问卷至少需要保留一道题目。", "error")
-        return redirect(url_for("surveys.survey_detail", survey_id=survey_id))
     history = list(survey.get("question_history", []))
+    visible = active_questions(survey)
+    position = next(i for i, question in enumerate(visible) if question["id"] == question_id)
+    remaining_visible = visible[:position] + visible[position + 1:]
+    return_question = remaining_visible[min(position, len(remaining_visible) - 1)] if remaining_visible else None
     target["active"] = False
     affected = 0
     for question in questions:
@@ -726,19 +931,23 @@ def delete_question(survey_id, question_id):
             previous_version(question, history)
             question["jumps"] = remaining
             affected += len(rules) - len(remaining)
-    save_questions(survey, questions, history)
+    try:
+        save_questions(survey, questions, history)
+    except Conflict:
+        return lifecycle_feedback(survey_id, "问卷已在其他页面修改，本次尚未删除题目。请核对最新内容后再操作。")
     message = "题目已从后续填写中移除，旧答卷与历史统计仍保留。"
     if affected:
         message += f" 指向该题的 {affected} 条跳转规则已移除。"
     flash(message, "success")
-    return redirect(url_for("surveys.survey_detail", survey_id=survey_id))
+    return redirect(url_for("surveys.survey_detail", survey_id=survey_id,
+                            _anchor="question-" + return_question["id"] if return_question else ""))
 
 
 @surveys_bp.get("/surveys/<survey_id>/questions/<question_id>/jumps/new")
 @login_required
-def new_jump(survey_id, question_id):
+def new_jump(survey_id, question_id, *, form=None, error=None, conflict=False):
     survey = owned_survey(survey_id)
-    if survey["status"] not in ("draft", "published"):
+    if survey["status"] != "draft":
         abort(409)
     questions = active_questions(survey)
     source_index = next((i for i, question in enumerate(questions) if question["id"] == question_id), None)
@@ -749,10 +958,23 @@ def new_jump(survey_id, question_id):
     if question["type"] not in ("single_choice", "multiple_choice", "number") or not targets:
         abort(404)
     return render_template("surveys/jump_new.html", survey=survey, question=question,
+                           form=request.form if form is None else form, error=error, conflict=conflict,
                            question_number=source_index + 1,
                            targets=list(enumerate(targets, start=source_index + 2)),
                            multi_modes=MULTI_MODES, number_operators=NUMBER_OPERATORS,
                            question_titles={item["id"]: item["title"] for item in questions})
+
+
+def jump_conflict_response(survey_id, question_id):
+    latest = get_db().surveys.find_one({"_id": ObjectId(survey_id), "owner_id": g.user["_id"]})
+    questions = active_questions(latest) if latest else []
+    index = next((i for i, q in enumerate(questions) if q["id"] == question_id), None)
+    if (latest and latest["status"] == "draft" and index is not None
+            and index + 1 < len(questions)
+            and questions[index]["type"] in ("single_choice", "multiple_choice", "number")):
+        return new_jump(survey_id, question_id, form=request.form,
+                        error=EDIT_CONFLICT_MESSAGE, conflict=True), 409
+    return lifecycle_feedback(survey_id, "问卷或题目已发生变化，本次没有修改跳转规则。请核对最新内容。")
 
 
 @surveys_bp.post("/surveys/<survey_id>/questions/<question_id>/jumps")
@@ -761,8 +983,8 @@ def add_jump(survey_id, question_id):
     if not valid_csrf():
         abort(400)
     survey = owned_survey(survey_id)
-    if survey["status"] not in ("draft", "published"):
-        abort(409)
+    if survey["status"] != "draft" or form_revision_conflict(survey):
+        return jump_conflict_response(survey_id, question_id)
     questions = active_questions(survey)
     source_index = next((i for i, question in enumerate(questions) if question["id"] == question_id), None)
     if source_index is None:
@@ -770,13 +992,16 @@ def add_jump(survey_id, question_id):
     try:
         rule = build_jump_rule(questions, source_index, request.form)
     except ValueError as problem:
-        flash(str(problem), "error")
+        return new_jump(survey_id, question_id, form=request.form, error=str(problem)), 422
     else:
         history = list(survey.get("question_history", []))
         source = questions[source_index]
         previous_version(source, history)
         source.setdefault("jumps", []).append(rule)
-        save_questions(survey, survey["questions"], history)
+        try:
+            save_questions(survey, survey["questions"], history)
+        except Conflict:
+            return jump_conflict_response(survey_id, question_id)
         count = len(jump_warnings(questions).get(question_id, []))
         flash("跳转规则已添加。" + (f" 本题有 {count} 条跳转提醒，请查看优先级。" if count else ""), "success")
     return redirect(jump_return_url(survey_id, question_id))
@@ -785,7 +1010,7 @@ def add_jump(survey_id, question_id):
 def jump_return_url(survey_id, question_id):
     if request.form.get("return_to") == "editor":
         return url_for("surveys.new_jump", survey_id=survey_id, question_id=question_id)
-    return url_for("surveys.survey_detail", survey_id=survey_id)
+    return url_for("surveys.survey_detail", survey_id=survey_id, rules=1, _anchor="question-" + question_id)
 
 
 @surveys_bp.post("/surveys/<survey_id>/questions/<question_id>/jumps/<rule_id>/delete")
@@ -794,15 +1019,18 @@ def delete_jump(survey_id, question_id, rule_id):
     if not valid_csrf():
         abort(400)
     survey = owned_survey(survey_id)
-    if survey["status"] not in ("draft", "published"):
-        abort(409)
+    if survey["status"] != "draft" or form_revision_conflict(survey):
+        return jump_conflict_response(survey_id, question_id)
     source = next((q for q in active_questions(survey) if q["id"] == question_id), None)
     if source is None or not any(rule["id"] == rule_id for rule in source.get("jumps", [])):
         abort(404)
     history = list(survey.get("question_history", []))
     previous_version(source, history)
     source["jumps"] = [rule for rule in source["jumps"] if rule["id"] != rule_id]
-    save_questions(survey, survey["questions"], history)
+    try:
+        save_questions(survey, survey["questions"], history)
+    except Conflict:
+        return jump_conflict_response(survey_id, question_id)
     flash("跳转规则已删除。", "success")
     return redirect(jump_return_url(survey_id, question_id))
 
@@ -813,8 +1041,8 @@ def move_jump(survey_id, question_id, rule_id):
     if not valid_csrf():
         abort(400)
     survey = owned_survey(survey_id)
-    if survey["status"] not in ("draft", "published"):
-        abort(409)
+    if survey["status"] != "draft" or form_revision_conflict(survey):
+        return jump_conflict_response(survey_id, question_id)
     source = next((q for q in active_questions(survey) if q["id"] == question_id), None)
     if source is None:
         abort(404)
@@ -831,7 +1059,10 @@ def move_jump(survey_id, question_id, rule_id):
     history = list(survey.get("question_history", []))
     previous_version(source, history)
     rules[index], rules[target] = rules[target], rules[index]
-    save_questions(survey, survey["questions"], history)
+    try:
+        save_questions(survey, survey["questions"], history)
+    except Conflict:
+        return jump_conflict_response(survey_id, question_id)
     flash("跳转优先级已调整。", "success")
     return redirect(jump_return_url(survey_id, question_id))
 
@@ -842,27 +1073,42 @@ def set_deadline(survey_id):
     if not valid_csrf():
         abort(400)
     survey = owned_survey(survey_id)
+    attempted = request.form.get("deadline", "").strip()
+
+    def error_page(message, status, *, conflict=False):
+        return survey_detail(survey_id, deadline_error=message, deadline_value=attempted,
+                             deadline_conflict=conflict), status
+
+    if survey["status"] == "closed":
+        return error_page("问卷已关闭，本次截止时间没有保存。", 409)
+    if form_revision_conflict(survey):
+        return error_page(EDIT_CONFLICT_MESSAGE, 409, conflict=True)
+    old_deadline = survey.get("deadline")
+    if old_deadline is not None:
+        old_deadline = old_deadline.replace(tzinfo=timezone.utc)
+    original_text = local_time(old_deadline).replace(" ", "T") if old_deadline else ""
     try:
-        deadline = parse_deadline(request.form.get("deadline", "").strip())
+        deadline = old_deadline if attempted == original_text else parse_deadline(attempted, allow_past=True)
+        if deadline != old_deadline:
+            deadline = parse_deadline(attempted)
     except ValueError as problem:
-        flash(str(problem), "error")
+        return error_page(str(problem), 422)
+    if deadline == old_deadline:
+        flash("截止时间没有变化。", "success")
     else:
-        old_deadline = survey.get("deadline")
-        if old_deadline is not None:
-            old_deadline = old_deadline.replace(tzinfo=timezone.utc)
-        if deadline == old_deadline:
-            flash("截止时间没有变化。", "success")
-        else:
-            updated = get_db().surveys.update_one(
-                {"_id": survey["_id"], "owner_id": g.user["_id"],
-                 "revision": survey.get("revision", 1)},
-                {"$set": {"deadline": deadline, "updated_at": datetime.now(timezone.utc)},
-                 "$inc": {"revision": 1}},
-            )
-            if not updated.modified_count:
-                abort(409)
-            flash("截止时间已更新。正在填写的人会在提交时收到变更提示。", "success")
-    return redirect(url_for("surveys.survey_detail", survey_id=survey_id))
+        updated = get_db().surveys.update_one(
+            {"_id": survey["_id"], "owner_id": g.user["_id"], "status": survey["status"],
+             "revision": survey["revision"] if "revision" in survey else {"$exists": False}},
+            {"$set": {"deadline": deadline, "updated_at": datetime.now(timezone.utc)},
+             "$inc": {"revision": 1}},
+        )
+        if not updated.modified_count:
+            latest = owned_survey(survey_id)
+            if latest["status"] == "closed":
+                return error_page("问卷已关闭，本次截止时间没有保存。", 409)
+            return error_page(EDIT_CONFLICT_MESSAGE, 409, conflict=True)
+        flash("截止时间已更新。正在填写的人会在提交时收到变更提示。", "success")
+    return redirect(url_for("surveys.survey_detail", survey_id=survey_id, _anchor="deadline-settings"))
 
 
 @surveys_bp.post("/surveys/<survey_id>/publish")
@@ -872,7 +1118,10 @@ def publish(survey_id):
         abort(400)
     survey = owned_survey(survey_id)
     if survey["status"] != "draft":
-        abort(409)
+        return lifecycle_feedback(survey_id, "当前状态不能发布，请核对问卷。", desired_status="published")
+    if lifecycle_form_conflict(survey):
+        return lifecycle_feedback(survey_id, "问卷已在其他页面修改，本次尚未发布。请核对当前内容后再发布。",
+                                  desired_status="published")
     if not active_questions(survey):
         flash("请先添加题目，再发布问卷。", "error")
         return redirect(url_for("surveys.survey_detail", survey_id=survey_id))
@@ -880,11 +1129,16 @@ def publish(survey_id):
     deadline = survey.get("deadline")
     if deadline and deadline.replace(tzinfo=timezone.utc) <= now:
         flash("截止时间已过，请先设置新的截止时间。", "error")
+        return redirect(url_for("surveys.survey_detail", survey_id=survey_id, _anchor="deadline-settings"))
     else:
-        get_db().surveys.update_one(
-            {"_id": survey["_id"], "owner_id": g.user["_id"], "status": "draft"},
+        published = get_db().surveys.update_one(
+            {"_id": survey["_id"], "owner_id": g.user["_id"], "status": "draft",
+             "revision": survey["revision"] if "revision" in survey else {"$exists": False}},
             {"$set": {"status": "published", "published_at": now, "updated_at": now}},
         )
+        if not published.modified_count:
+            return lifecycle_feedback(survey_id, "问卷刚刚发生变化，本次尚未发布。请检查最新内容后重新发布。",
+                                      desired_status="published")
         count = sum(len(items) for items in jump_warnings(active_questions(survey)).values())
         flash("问卷已发布。" + (f" 有 {count} 条跳转提醒，建议在详情页检查优先级。" if count else ""), "success")
     return redirect(url_for("surveys.survey_detail", survey_id=survey_id))
@@ -897,12 +1151,19 @@ def close(survey_id):
         abort(400)
     survey = owned_survey(survey_id)
     if survey["status"] != "published":
-        abort(409)
+        return lifecycle_feedback(survey_id, "当前问卷尚未发布，不能关闭。", desired_status="closed")
+    if lifecycle_form_conflict(survey):
+        return lifecycle_feedback(survey_id, "问卷已在其他页面修改，本次尚未关闭。请核对当前内容后再操作。",
+                                  desired_status="closed")
     now = datetime.now(timezone.utc)
-    get_db().surveys.update_one(
-        {"_id": survey["_id"], "owner_id": g.user["_id"], "status": "published"},
+    updated = get_db().surveys.update_one(
+        {"_id": survey["_id"], "owner_id": g.user["_id"], "status": "published",
+         "revision": survey["revision"] if "revision" in survey else {"$exists": False}},
         {"$set": {"status": "closed", "closed_at": now, "updated_at": now}},
     )
+    if not updated.modified_count:
+        return lifecycle_feedback(survey_id, "问卷刚刚发生变化，本次尚未关闭。请核对当前内容后重试。",
+                                  desired_status="closed")
     flash("问卷已关闭。", "success")
     return redirect(url_for("surveys.survey_detail", survey_id=survey_id))
 
@@ -955,6 +1216,9 @@ def statistics(survey_id):
             item["current_definition"] and not item["historical"] for item in results),
         page=page, page_count=page_count, page_size=page_size, view=view, query=query,
         question_types=QUESTION_TYPES, display_percent=display_percent,
+        statistics_context={"stats_page": page, "stats_hpage": historical_page,
+                            "stats_view": view, "stats_q": query},
+        text_answer_key=text_answer_key,
     )
 
 
@@ -970,11 +1234,25 @@ def question_statistics(survey_id, question_id):
                                             survey.get("question_history", []), return_overview=True)
     results = [item for item in results if item["question"]["id"] == question_id]
     answer_page = max(1, request.args.get("answer_page", 1, type=int) or 1)
+    current_question = next(q for q in survey["questions"] if q["id"] == question_id)
+    selected_version = request.args.get("version", current_question.get("version", 1), type=int)
+    if selected_version not in {item["question"].get("version", 1) for item in results}:
+        abort(404)
+    navigation = statistics_navigation()
+    for item in results:
+        version_page = answer_page if selected_version == item["question"].get("version", 1) else 1
+        total_pages = max(1, (len(item.get("values", [])) + 19) // 20)
+        item["account_context"] = {**navigation, "stats_answer_page": min(version_page, total_pages)}
+    current_account_context = next(item["account_context"] for item in results
+                                   if item["question"].get("version", 1) == current_question.get("version", 1))
     return render_template(
         "surveys/question_statistics.html", survey=survey, results=results,
         response_count=overview["response_count"], answer_page=answer_page,
-        current_question=next(q for q in survey["questions"] if q["id"] == question_id),
-        display_percent=display_percent,
+        current_question=current_question, selected_version=selected_version,
+        display_percent=display_percent, statistics_context=navigation,
+        current_account_context=current_account_context,
+        statistics_back_url=statistics_overview_url(survey_id, statistics_navigation()),
+        text_answer_key=text_answer_key,
     )
 
 
@@ -1004,7 +1282,8 @@ def survey_account_responses(survey_id):
     return render_template("surveys/account_responses.html", survey=survey,
                            responses=responses, names=names, total=total,
                            page=page, page_count=page_count, query=username_query,
-                           local_time=local_time)
+                           local_time=local_time, statistics_context=statistics_navigation(),
+                           statistics_back_url=statistics_overview_url(survey_id, statistics_navigation()))
 
 
 @surveys_bp.get("/surveys/<survey_id>/responses/<response_id>")
@@ -1024,6 +1303,30 @@ def survey_account_response_detail(survey_id, response_id):
     user = get_db().users.find_one({"_id": response["respondent_id"]}, {"username": 1})
     return render_response_detail(response, survey, owner_view=True,
                                   respondent_name=user["username"] if user else "账号已删除")
+
+
+def equivalent_numeric_answers(survey_id, answer_filter, query):
+    try:
+        wanted = Decimal(query)
+    except InvalidOperation:
+        return []
+    if not wanted.is_finite():
+        return []
+    candidates = get_db().responses.aggregate([
+        {"$match": {"survey_id": survey_id, "respondent_id": {"$exists": True, "$ne": None}}},
+        {"$unwind": "$answers"},
+        {"$match": {f"answers.{key}": value for key, value in answer_filter.items()}},
+        {"$group": {"_id": "$answers.value"}},
+    ])
+    matches = []
+    for row in candidates:
+        try:
+            number = Decimal(str(row["_id"]))
+            if number.is_finite() and number == wanted:
+                matches.append(row["_id"])
+        except (InvalidOperation, KeyError):
+            continue
+    return matches
 
 
 @surveys_bp.get("/surveys/<survey_id>/statistics/<question_id>/accounts")
@@ -1049,10 +1352,27 @@ def question_account_responses(survey_id, question_id):
     if option_text is not None:
         answer_query = ""
     exact = request.args.get("exact") == "1"
+    answer_key = request.args.get("answer_key", "")
+    if answer_key and (question["type"] != "text" or not re.fullmatch(r"[0-9a-f]{64}", answer_key)):
+        abort(404)
     answer_filter = {"question_id": question_id}
     answer_filter["question_version"] = {"$in": [1, None]} if version == 1 else version
-    if option_text is not None:
+    if answer_key:
+        candidates = get_db().responses.aggregate([
+            {"$match": {"survey_id": survey["_id"], "respondent_id": {"$exists": True, "$ne": None}}},
+            {"$unwind": "$answers"},
+            {"$match": {f"answers.{key}": value for key, value in answer_filter.items()}},
+            {"$group": {"_id": "$answers.value"}},
+        ])
+        matches = [row["_id"] for row in candidates
+                   if isinstance(row["_id"], str) and text_answer_key(row["_id"]) == answer_key]
+        answer_filter["value"] = {"$in": matches}
+        answer_query = matches[0] if matches else ""
+        exact = True
+    elif option_text is not None:
         answer_filter["value"] = option_text
+    elif answer_query and exact and question["type"] == "number":
+        answer_filter["value"] = {"$in": equivalent_numeric_answers(survey["_id"], answer_filter, answer_query)}
     elif answer_query:
         answer_filter["value"] = answer_query if exact else {"$regex": re.escape(answer_query), "$options": "i"}
     filters = {"survey_id": survey["_id"], "respondent_id": {"$exists": True, "$ne": None},
@@ -1074,7 +1394,8 @@ def question_account_responses(survey_id, question_id):
                            question=question, responses=responses, names=names,
                            total=total, page=page, page_count=page_count,
                            version=version, option_index=option_index, option_text=option_text,
-                           query=answer_query, exact=exact, local_time=local_time)
+                           query=answer_query, exact=exact, local_time=local_time,
+                           answer_key=answer_key, statistics_context=statistics_navigation())
 
 
 @surveys_bp.route("/survey/<slug>", methods=["GET", "POST"])
@@ -1146,7 +1467,7 @@ def public_survey(slug):
                 try:
                     inserted = get_db().responses.insert_one(response_data)
                 except DuplicateKeyError:
-                    return "你已提交过这份问卷，不能重复填写。", 409
+                    return render_template("surveys/public.html", survey=survey, already_submitted=True), 409
                 after_insert = get_db().surveys.find_one({"_id": survey["_id"]})
                 if after_insert is None or after_insert["status"] != "published":
                     get_db().responses.delete_one({"_id": inserted.inserted_id})
@@ -1174,7 +1495,8 @@ def public_survey(slug):
 def response_draft(slug):
     if g.user is None:
         return jsonify(error="请先登录。"), 401
-    survey = get_db().surveys.find_one({"slug": slug, "status": "published"}, {"_id": 1, "questions": 1, "revision": 1})
+    # Closing stops new/final submissions, not preservation of an already-open form.
+    survey = get_db().surveys.find_one({"slug": slug, "status": {"$in": ["published", "closed"]}}, {"_id": 1, "questions": 1, "revision": 1})
     if survey is None:
         abort(404)
     key = {"survey_id": survey["_id"], "user_id": g.user["_id"]}
@@ -1187,9 +1509,11 @@ def response_draft(slug):
         get_db().response_drafts.delete_one(key)
         return jsonify(saved=False)
     if request.content_length and request.content_length > 100_000:
-        return jsonify(error="暂存内容过大。"), 413
-    data = request.get_json(silent=True) or {}
-    raw = data.get("answers", {})
+        return jsonify(error="内容超过暂存容量，尚未保存。请保留此页，完成后直接提交。"), 413
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify(error="暂存答案格式不正确，尚未保存。"), 400
+    raw = data.get("answers")
     if not isinstance(raw, dict):
         return jsonify(error="答案格式不正确。"), 400
     allowed = {f"q_{question['id']}" for question in active_questions(survey)}
@@ -1197,10 +1521,12 @@ def response_draft(slug):
     for key_name, value in raw.items():
         if key_name not in allowed:
             continue
-        if isinstance(value, str) and len(value) <= 10_000:
+        if isinstance(value, str):
             answers[key_name] = value
-        elif isinstance(value, list) and len(value) <= 100 and all(isinstance(item, str) and len(item) <= 1000 for item in value):
+        elif isinstance(value, list) and all(isinstance(item, str) for item in value):
             answers[key_name] = value
+        else:
+            return jsonify(error="暂存答案格式不正确，尚未保存。"), 400
     identity_mode = data.get("identity_mode", "anonymous")
     if identity_mode not in ("anonymous", "named"):
         identity_mode = "anonymous"
@@ -1228,7 +1554,8 @@ def public_assess(slug):
         abort(400)
     if g.user is None:
         return jsonify(error="请先登录。"), 401
-    survey = get_db().surveys.find_one({"slug": slug, "status": "published"})
+    # Validate the signed form the respondent opened; final submission checks status.
+    survey = get_db().surveys.find_one({"slug": slug, "status": {"$in": ["published", "closed"]}})
     if survey is None:
         return jsonify(error="问卷当前无法填写。"), 409
     return assess_response(survey)

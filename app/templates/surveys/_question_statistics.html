@@ -1,22 +1,22 @@
-<section class="stat-question">
-  <h2><span class="stat-question-number">{{ question_label(result.index) }}</span>{{ result.question.title }}{% if not result.question.required %}<span class="question-optional-label">（选答）</span>{% endif %}{% if result.historical %}<span class="question-type-label">旧答卷题目</span>{% endif %}</h2>
+<section class="stat-question" id="statistics-version-{{ result.question.get('version', 1) }}-{{ result.question.id }}">
+  <h2><span class="stat-question-number">{{ question_label(result.index) }}</span>{{ result.question.title }}{% if not result.question.required %}<span class="question-optional-label">（选答）</span>{% endif %}{% if result.historical %}<span class="question-type-label">旧答卷题目 · 第 {{ result.question.get('version', 1) }} 版</span>{% endif %}</h2>
   <div class="question-stat-metrics{{ ' is-single-metric' if result.question.required and not result.blank_count else '' }}">
     {% if not result.question.required %}<div><span>包含本题的答卷</span><strong>{{ result.reached_count }}</strong></div>{% endif %}
-    <div><span>已回答</span><strong>{{ result.answered_count }}</strong></div>
-    {% if not result.question.required %}<div><span>选答未填</span><strong>{{ result.blank_count }}</strong></div>
-    {% elif result.blank_count %}<div><span>旧答卷未填</span><strong>{{ result.blank_count }}</strong></div>{% endif %}
+    <div class="metric-answered"><span>已回答</span><strong>{{ result.answered_count }}</strong></div>
+    {% if not result.question.required %}<div class="metric-blank"><span>选答未填</span><strong>{{ result.blank_count }}</strong></div>
+    {% elif result.blank_count %}<div class="metric-blank"><span>旧答卷未填</span><strong>{{ result.blank_count }}</strong></div>{% endif %}
   </div>
   {% if result.question.required and result.blank_count %}<p class="hint">这部分来自旧答卷；当前必答校验不允许空白提交。</p>{% endif %}
   {% if result.current_definition and result.not_included_count %}<details class="statistics-notes"><summary>未包含本题的答卷：{{ result.not_included_count }} 份</summary><p>可能因条件跳转略过，或提交时尚未添加本题；不算作未填写。</p></details>{% endif %}
   {% if result.question.type == 'single_choice' %}
-    <ul class="option-results">{% for option, count in result.option_counts.items() %}<li><div class="option-result-label"><span><b class="option-result-marker">{{ option_label(loop.index, option_style(survey)) }}.</b> {{ option }}</span><strong>{{ count }} 份 · {{ result.option_percentages[option] }}%</strong></div><div class="result-track"><div class="result-bar" style="width: {{ result.option_percentages[option] }}%"></div></div>{% if answer_page is defined and count %}<a class="account-result-link" href="{{ url_for('surveys.question_account_responses', survey_id=survey._id, question_id=result.question.id, version=result.question.get('version', 1), option=loop.index0) }}">查看选择此项的账号 →</a>{% endif %}</li>{% endfor %}</ul>
+    <ul class="option-results">{% for option, count in result.option_counts.items() %}<li><div class="option-result-label"><span><b class="option-result-marker">{{ option_label(loop.index, option_style(survey)) }}.</b> {{ option }}</span><strong>{{ count }} 份 · {{ result.option_percentages[option] }}%</strong></div><div class="result-track"><div class="result-bar" style="width: {{ result.option_percentages[option] }}%"></div></div>{% if answer_page is defined and count %}<a class="account-result-link" href="{{ url_for('surveys.question_account_responses', survey_id=survey._id, question_id=result.question.id, version=result.question.get('version', 1), option=loop.index0, **result.account_context) }}">查看选择此项的账号 →</a>{% endif %}</li>{% endfor %}</ul>
   {% elif result.question.type == 'multiple_choice' %}
-    <ul class="option-results">{% for option, count in result.option_counts.items() %}<li><div class="option-result-label"><span><b class="option-result-marker">{{ option_label(loop.index, option_style(survey)) }}.</b> {{ option }}</span><strong>{{ count }} 次 · {{ result.option_percentages[option] }}%</strong></div><div class="result-track"><div class="result-bar" style="width: {{ result.option_percentages[option] }}%"></div></div>{% if answer_page is defined and count %}<a class="account-result-link" href="{{ url_for('surveys.question_account_responses', survey_id=survey._id, question_id=result.question.id, version=result.question.get('version', 1), option=loop.index0) }}">查看选择此项的账号 →</a>{% endif %}</li>{% endfor %}</ul>
+    <ul class="option-results">{% for option, count in result.option_counts.items() %}<li><div class="option-result-label"><span><b class="option-result-marker">{{ option_label(loop.index, option_style(survey)) }}.</b> {{ option }}</span><strong>{{ count }} 次 · {{ result.option_percentages[option] }}%</strong></div><div class="result-track"><div class="result-bar" style="width: {{ result.option_percentages[option] }}%"></div></div>{% if answer_page is defined and count %}<a class="account-result-link" href="{{ url_for('surveys.question_account_responses', survey_id=survey._id, question_id=result.question.id, version=result.question.get('version', 1), option=loop.index0, **result.account_context) }}">查看选择此项的账号 →</a>{% endif %}</li>{% endfor %}</ul>
     <details class="statistics-notes"><summary>比例说明</summary><p>每项比例以本版本已回答的答卷数为分母。一份答卷可选多项，因此比例之和可能超过 100%。</p></details>
   {% elif result.question.type == 'text' %}
     {% if result['values'] %}
       <p>不同回答：<strong>{{ result.distinct_count }}</strong> 种</p>
-      <p class="stat-answer-label">常见回答</p><ul class="stat-answer-preview">{% for value, count in result.text_frequencies[:5] %}<li><span>{{ value|truncate(160, True, '…') }}</span><strong>{{ count }} 次</strong>{% if answer_page is defined %}<a href="{{ url_for('surveys.question_account_responses', survey_id=survey._id, question_id=result.question.id, version=result.question.get('version', 1), q=value, exact=1) }}">查看作答账号</a>{% endif %}</li>{% endfor %}</ul>
+      <p class="stat-answer-label">常见回答</p><ul class="stat-answer-preview">{% for value, count in result.text_frequencies[:5] %}<li><span>{{ value|truncate(160, True, '…') }}</span><strong>{{ count }} 次</strong>{% if answer_page is defined %}<a href="{{ url_for('surveys.question_account_responses', survey_id=survey._id, question_id=result.question.id, version=result.question.get('version', 1), answer_key=text_answer_key(value), exact=1, **result.account_context) }}">查看作答账号</a>{% endif %}</li>{% endfor %}</ul>
       {% if result.text_frequencies|length > 5 %}<p class="hint">另有 {{ result.text_frequencies|length - 5 }} 种回答，可在单题详情中查看。</p>{% endif %}
     {% else %}<p class="hint">暂无填写内容。</p>{% endif %}
   {% elif result.question.type == 'number' %}
@@ -24,8 +24,8 @@
       {% if result.question.get('number_statistics', 'distribution') == 'measure' %}
         <div class="number-stat-grid"><div><span>平均值</span><strong>{{ result.average }}</strong></div><div><span>中位数</span><strong>{{ result.median }}</strong></div><div><span>最小值</span><strong>{{ result.minimum }}</strong></div><div><span>最大值</span><strong>{{ result.maximum }}</strong></div></div>
       {% else %}
-        <p class="stat-answer-label">各答案的回答人数</p>
-        <ul class="stat-answer-preview">{% for value, count in result.number_frequencies[:15] %}<li><span>{{ value }}</span><strong>{{ count }} 份 · {{ display_percent(count, result.answered_count) }}%</strong>{% if answer_page is defined %}<a href="{{ url_for('surveys.question_account_responses', survey_id=survey._id, question_id=result.question.id, version=result.question.get('version', 1), q=value, exact=1) }}">查看作答账号</a>{% endif %}</li>{% endfor %}</ul>
+        <p class="stat-answer-label">各答案的回答份数</p>
+        <ul class="stat-answer-preview">{% for value, count in result.number_frequencies[:15] %}<li><span>{{ value }}</span><strong>{{ count }} 份 · {{ display_percent(count, result.answered_count) }}%</strong>{% if answer_page is defined %}<a href="{{ url_for('surveys.question_account_responses', survey_id=survey._id, question_id=result.question.id, version=result.question.get('version', 1), q=value, exact=1, **result.account_context) }}">查看作答账号</a>{% endif %}</li>{% endfor %}</ul>
         {% if result.number_frequencies|length > 15 %}<p class="hint">还有 {{ result.number_frequencies|length - 15 }} 种答案，可在单题详情中查看原始回答。</p>{% endif %}
         <details class="statistics-notes"><summary>查看数值概览</summary><p class="hint">以下仅概括填写的数字，不代表题目的正确答案。</p><div class="number-stat-grid"><div><span>平均值</span><strong>{{ result.average }}</strong></div><div><span>中位数</span><strong>{{ result.median }}</strong></div><div><span>最小值</span><strong>{{ result.minimum }}</strong></div><div><span>最大值</span><strong>{{ result.maximum }}</strong></div></div></details>
       {% endif %}
@@ -34,13 +34,14 @@
   {% if result.question.type in ('text', 'number') and result['values'] %}
     {% if answer_page is defined %}
       {% set total_answer_pages = ((result['values']|length - 1) // 20) + 1 %}
-      {% set shown_answer_page = [answer_page, total_answer_pages]|min %}
+      {% set version_page = answer_page if selected_version == result.question.get('version', 1) else 1 %}
+      {% set shown_answer_page = [version_page, total_answer_pages]|min %}
       <section class="stat-raw-answers"><h3>原始回答 <span>共 {{ result['values']|length }} 条</span></h3>
         <ol start="{{ (shown_answer_page - 1) * 20 + 1 }}">{% for value in result['values'][(shown_answer_page - 1) * 20:shown_answer_page * 20] %}<li>{{ value }}</li>{% endfor %}</ol>
-        {% if total_answer_pages > 1 %}<nav class="statistics-pages" aria-label="原始回答分页">{% if shown_answer_page > 1 %}<a href="{{ url_for('surveys.question_statistics', survey_id=survey._id, question_id=result.question.id, answer_page=shown_answer_page - 1) }}">← 上一页</a>{% endif %}<span>第 {{ shown_answer_page }} / {{ total_answer_pages }} 页</span>{% if shown_answer_page < total_answer_pages %}<a href="{{ url_for('surveys.question_statistics', survey_id=survey._id, question_id=result.question.id, answer_page=shown_answer_page + 1) }}">下一页 →</a>{% endif %}</nav>{% endif %}
+        {% if total_answer_pages > 1 %}<nav class="statistics-pages" aria-label="原始回答分页">{% if shown_answer_page > 1 %}<a href="{{ url_for('surveys.question_statistics', survey_id=survey._id, question_id=result.question.id, answer_page=shown_answer_page - 1, version=result.question.get('version', 1), _anchor='statistics-version-' ~ result.question.get('version', 1) ~ '-' ~ result.question.id, **statistics_context) }}">← 上一页</a>{% endif %}<span>第 {{ shown_answer_page }} / {{ total_answer_pages }} 页</span>{% if shown_answer_page < total_answer_pages %}<a href="{{ url_for('surveys.question_statistics', survey_id=survey._id, question_id=result.question.id, answer_page=shown_answer_page + 1, version=result.question.get('version', 1), _anchor='statistics-version-' ~ result.question.get('version', 1) ~ '-' ~ result.question.id, **statistics_context) }}">下一页 →</a>{% endif %}</nav>{% endif %}
       </section>
     {% else %}
-      <a class="stat-detail-link" href="{{ url_for('surveys.question_statistics', survey_id=survey._id, question_id=result.question.id) }}">查看全部原始回答 →</a>
+      <a class="stat-detail-link" href="{{ url_for('surveys.question_statistics', survey_id=survey._id, question_id=result.question.id, **statistics_context) }}">查看全部原始回答 →</a>
     {% endif %}
   {% endif %}
 </section>

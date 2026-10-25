@@ -5,11 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}在线问卷系统{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='20261020') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='experience.css', v='20261020i') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='polish.css', v='20261021t') }}">
-  <script src="{{ url_for('static', filename='app.js', v='20261021n') }}" defer></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='experience.css', v='20261024a') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='polish.css', v='20261024g') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='library.css', v='20261024b') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='colors.css', v='20261024a') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='catalog-review.css', v='20261025a') }}">
+  <script src="{{ url_for('static', filename='app.js', v='20261025g') }}" defer></script>
 </head>
 <body>
+  {% if survey_list_context %}<template data-survey-list-context>{% for key,value in survey_list_context.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}</template>{% endif %}
   <header class="site-header">
     <nav class="site-nav{{ ' is-authenticated' if g.user else ' is-guest' }}" aria-label="主导航">
       <a class="site-brand" href="{{ url_for('auth.dashboard') if g.user else url_for('index') }}"><span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>问卷系统</a>
@@ -19,6 +23,7 @@
           <a class="nav-item{{ ' is-active' if request.endpoint == 'auth.dashboard' else '' }}" href="{{ url_for('auth.dashboard') }}" {% if request.endpoint == 'auth.dashboard' %}aria-current="page"{% endif %}>个人首页</a>
           <a class="nav-item{{ ' is-active' if request.path.startswith('/surveys') else '' }}" href="{{ url_for('surveys.my_surveys') }}" {% if request.path.startswith('/surveys') %}aria-current="page"{% endif %}>我的问卷</a>
           <a class="nav-item{{ ' is-active' if request.path.startswith('/responses') else '' }}" href="{{ url_for('surveys.my_responses') }}" {% if request.path.startswith('/responses') %}aria-current="page"{% endif %}>我的答卷</a>
+          <a class="nav-item{{ ' is-active' if request.path.startswith('/question-library') or request.path.startswith('/question-banks') else '' }}" href="{{ url_for('bank.library') }}" {% if request.path.startswith('/question-library') or request.path.startswith('/question-banks') %}aria-current="page"{% endif %}>题目库</a>
         </div>
           <form class="nav-logout" action="{{ url_for('auth.logout') }}" method="post">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

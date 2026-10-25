@@ -9,7 +9,7 @@
     <div><span>匿名提交</span><strong>{{ overview.anonymous }}</strong></div>
     <div><span>账号提交</span><strong>{{ overview.named }}</strong></div>
   </div>
-  <div class="statistics-account-link"><div><strong>查看账号答卷</strong><span>逐份查看账号提交的答案；匿名答卷不显示身份。</span></div><a class="secondary-button" href="{{ url_for('surveys.survey_account_responses', survey_id=survey._id) }}">查看账号答卷 →</a></div>
+  <div class="statistics-account-link"><div><strong>查看账号答卷</strong><span>逐份查看账号提交的答案；匿名答卷不显示身份。</span></div><a class="secondary-button" href="{{ url_for('surveys.survey_account_responses', survey_id=survey._id, **statistics_context) }}">查看账号答卷 →</a></div>
   {% if overview.first_submission %}<p class="hint">首次提交：{{ local_time(overview.first_submission) }}；最近提交：{{ local_time(overview.last_submission) }}。</p>{% endif %}
   <details class="statistics-notes"><summary>统计说明</summary>
     <p>按答卷统计；同一账号多次提交时，每份答卷分别计入。</p>
@@ -28,15 +28,15 @@
     </nav>
   </div>
   {% if total_questions %}<p class="statistics-range">显示 {{ (page - 1) * page_size + 1 }}–{{ [page * page_size, total_questions]|min }} / {{ total_questions }} 题{% if query %} · 共 {{ all_question_count }} 题{% endif %}</p>{% elif query %}<p class="filter-empty">没有找到符合条件的题目。</p>{% endif %}
-  {% if view == 'table' and current_results %}<div class="statistics-table-wrap"><table class="statistics-table">
+  {% if view == 'table' and current_results %}<div class="statistics-table-wrap statistics-summary-wrap"><table class="statistics-table statistics-summary-table">
     <thead><tr><th scope="col">题号</th><th scope="col">题目</th><th scope="col">类型</th><th scope="col">已回答</th><th scope="col">结果概览</th><th scope="col" aria-label="操作"></th></tr></thead>
     <tbody>{% for result in current_results %}<tr>
-      <td>{{ question_label(result.index) }}</td>
+      <td data-label="题号">{{ question_label(result.index) }}</td>
       <th scope="row"><span title="{{ result.question.title }}">{{ result.question.title }}</span></th>
-      <td>{{ question_types[result.question.type] }}</td>
-      <td>{{ result.answered_count }}{% if not result.question.required %} / {{ result.reached_count }}{% endif %}</td>
-      <td><span title="{{ result.compact_summary }}">{{ result.compact_summary }}</span></td>
-      <td><a href="{{ url_for('surveys.question_statistics', survey_id=survey._id, question_id=result.question.id) }}">查看详情</a></td>
+      <td data-label="类型">{{ question_types[result.question.type] }}</td>
+      <td data-label="已回答">{{ result.answered_count }}{% if not result.question.required %} / {{ result.reached_count }}{% endif %}</td>
+      <td data-label="结果"><span title="{{ result.compact_summary }}">{{ result.compact_summary }}</span></td>
+      <td><a href="{{ url_for('surveys.question_statistics', survey_id=survey._id, question_id=result.question.id, **statistics_context) }}">查看详情</a></td>
     </tr>{% endfor %}</tbody>
   </table></div>{% endif %}
   {% if view == 'cards' %}{% for result in current_results %}

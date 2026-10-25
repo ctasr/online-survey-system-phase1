@@ -241,11 +241,9 @@ class JsonApiTests(unittest.TestCase):
         edited = owner.patch(path + "/questions/" + ids[4], json={
             "title": "其他建议", "revision": revision,
         }, headers=owner_headers)
-        self.assertEqual(edited.status_code, 200, edited.json)
-        self.assertEqual(self.post(writer, public + "/responses", {
-            "revision": revision, "answers": answers,
-        }, writer_headers).status_code, 409)
+        self.assertEqual(edited.status_code, 409, edited.json)
         latest = writer.get(public).json["survey"]
+        self.assertEqual(latest["revision"], revision)
         submitted = self.post(writer, public + "/responses", {
             "revision": latest["revision"], "answers": answers,
         }, writer_headers)

@@ -98,7 +98,6 @@ class JumpPriorityFlowTests(unittest.TestCase):
         current = self.db.surveys.find_one({"_id": survey["_id"]})["questions"]
         self.assertEqual(next_question_index(current, 0, "A"), 1)
         rules = current[0]["jumps"]
-        self.post(owner, detail + "/publish", {})
         moved = self.post(owner, f"{detail}/questions/{source_id}/jumps/{rules[1]['id']}/move", {
             "direction": "up",
         })
@@ -106,6 +105,10 @@ class JumpPriorityFlowTests(unittest.TestCase):
         current = self.db.surveys.find_one({"_id": survey["_id"]})["questions"]
         self.assertEqual(current[0]["jumps"][0]["id"], rules[1]["id"])
         self.assertEqual(next_question_index(current, 0, "A"), 2)
+        self.post(owner, detail + "/publish", {})
+        self.assertEqual(self.post(owner, f"{detail}/questions/{source_id}/jumps/{rules[0]['id']}/move", {
+            "direction": "up",
+        }).status_code, 409)
         self.assertEqual(self.db.surveys.find_one({"_id": survey["_id"]})["status"], "published")
 
 

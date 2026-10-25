@@ -1,3 +1,30 @@
+const inlineDeadlineSettings = document.getElementById('deadline-settings');
+if (inlineDeadlineSettings && location.hash === '#deadline-settings') {
+  inlineDeadlineSettings.open = true;
+  inlineDeadlineSettings.querySelector('summary').after(...document.querySelectorAll('main > .notice'));
+  requestAnimationFrame(() => {
+    inlineDeadlineSettings.querySelector('summary').focus({preventScroll: true});
+    inlineDeadlineSettings.scrollIntoView({block: 'start'});
+  });
+}
+const listReturnContext = document.querySelector('[data-survey-list-context]');
+if (listReturnContext) {
+  document.querySelectorAll('form[method="get"]').forEach(form => {
+    const destination = new URL(form.action || location.href, location.href);
+    if (destination.origin !== location.origin || !/^\/(surveys(?:\/|$)|question-library(?:\/|$)|question-banks(?:\/|$))/.test(destination.pathname)) return;
+    if (destination.pathname === '/surveys') return;
+    listReturnContext.content.querySelectorAll('input').forEach(input => {
+      if (!form.querySelector(`[name="${input.name}"]`)) form.append(input.cloneNode(true));
+    });
+  });
+}
+const errorBack = document.querySelector('[data-error-back]');
+errorBack?.addEventListener('click', () => {
+  let cameFromThisSite = false;
+  try { cameFromThisSite = new URL(document.referrer).origin === window.location.origin; } catch (_) {}
+  if (cameFromThisSite && window.history.length > 1) window.history.back();
+  else window.location.assign(errorBack.dataset.fallbackUrl);
+});
 const confirmDialog = document.querySelector('[data-confirm-dialog]');
 const responseFilters = document.querySelector('[data-response-filters]');
 if (responseFilters) {
@@ -81,8 +108,17 @@ const reviewToggle = document.querySelector('[data-review-toggle]');
 reviewToggle?.addEventListener('click', () => {
   const review = document.querySelector('[data-answer-review]');
   const compact = review.classList.toggle('is-compact');
-  reviewToggle.textContent = compact ? '显示全部选项' : '只看我的答案';
+  reviewToggle.textContent = compact ? '显示全部选项' : reviewToggle.dataset.compactLabel;
   reviewToggle.setAttribute('aria-pressed', String(!compact));
+  document.querySelectorAll('[data-review-pages] a').forEach(link => {
+    const destination = new URL(link.href);
+    if (compact) destination.searchParams.delete('options');
+    else destination.searchParams.set('options', 'all');
+    link.href = destination.href;
+  });
+  document.querySelectorAll('[data-review-pages] input[name="options"]').forEach(input => {
+    input.value = compact ? 'compact' : 'all';
+  });
 });
 
 const questionSearch = document.querySelector('[data-question-search]');
@@ -146,13 +182,31 @@ if (questionSearch) {
     page = Math.floor(cards.indexOf(target) / pageSize) + 1;
     renderQuestions();
     target.classList.add('is-expanded');
+    if (new URL(location.href).searchParams.get('rules') === '1') {
+      const rules = target.querySelector('.question-settings');
+      if (rules) rules.open = true;
+    }
     const expand = target.querySelector('[data-question-expand]');
     if (expand) { expand.textContent = '收起'; expand.setAttribute('aria-expanded', 'true'); }
-    requestAnimationFrame(() => target.scrollIntoView({ block:'start' }));
+    requestAnimationFrame(() => {
+      target.prepend(...document.querySelectorAll('main > .notice'));
+      target.setAttribute('tabindex', '-1');
+      target.focus({preventScroll: true});
+      target.scrollIntoView({ block:'start' });
+    });
   }
   window.addEventListener('hashchange', showAnchorQuestion);
   if (location.hash) showAnchorQuestion(); else renderQuestions();
 }
+
+document.querySelectorAll('[data-view-question-rules]').forEach(link => {
+  link.addEventListener('click', () => {
+    const card = document.getElementById(link.hash.slice(1));
+    const rules = card?.querySelector('.question-settings');
+    if (rules) rules.open = true;
+    if (link.hash === location.hash) window.dispatchEvent(new Event('hashchange'));
+  });
+});
 
 const surveyFlow = document.querySelector("[data-survey-flow]");
 const pageBackTop = document.querySelector('[data-page-back-top]');
@@ -184,11 +238,27 @@ if (surveyFlow) {
   let submitting = false;
   const draftUrl = surveyFlow.dataset.draftUrl;
   const draftState = surveyFlow.querySelector('[data-draft-state]');
+  const retryDraft = surveyFlow.querySelector('[data-retry-draft]');
+  function setDraftState(message, failed = false) {
+    draftState.textContent = message;
+    draftState.classList.toggle('is-error', failed);
+  }
   let draftTimer;
   let restoringDraft = Boolean(draftUrl);
+  let draftRestored = !draftUrl;
   let draftRevision = 0;
   let draftSaving = null;
   let draftSaveQueue = Promise.resolve();
+  let draftRestorePromise = Promise.resolve();
+  const touchedDraftFields = new Set();
+  const hasServerAnswers = [...new FormData(surveyFlow).entries()].some(([name, value]) =>
+    name.startsWith('q_') && String(value).trim());
+  function scheduleDraftSave() {
+    clearTimeout(draftTimer);
+    if (draftUrl && draftRestored && !restoringDraft && !submitting && surveyFlow.dataset.draftDirty === 'true') {
+      draftTimer = setTimeout(saveDraft, 900);
+    }
+  }
   function draftPayload() {
     const form = new FormData(surveyFlow);
     const answers = {};
@@ -201,9 +271,17 @@ if (surveyFlow) {
     return { answers, identity_mode: form.get('identity_mode') || 'named' };
   }
   async function saveDraft() {
-    if (!draftUrl || restoringDraft || submitting) return;
+    if (!draftUrl) return true;
+    if (restoringDraft) await draftRestorePromise;
+    if (!draftRestored) {
+      setDraftState('尚未恢复上次答案，请先重试恢复，避免覆盖原有内容。', true);
+      return false;
+    }
+    if (submitting) return false;
+    clearTimeout(draftTimer);
     const savingRevision = draftRevision;
-    draftState.textContent = '正在暂存…';
+    let trackedSave;
+    setDraftState('正在暂存…');
     try {
       const request = draftSaveQueue.then(() => fetch(draftUrl, {
         method: 'POST', headers: { 'Content-Type': 'application/json',
@@ -211,50 +289,73 @@ if (surveyFlow) {
         body: JSON.stringify(draftPayload())
       }));
       draftSaveQueue = request.catch(() => {});
-      draftSaving = draftSaveQueue;
+      trackedSave = draftSaveQueue;
+      draftSaving = trackedSave;
       const response = await request;
-      if (!response.ok) throw new Error('save failed');
+      if (!response.ok) {
+        const problem = await response.json().catch(() => ({}));
+        setDraftState(problem.error || '暂存失败，请稍后重试', true);
+        return false;
+      }
       if (savingRevision === draftRevision) {
-        draftState.textContent = '答案已暂存，可稍后继续填写';
+        setDraftState('答案已暂存，可稍后继续填写');
         surveyFlow.dataset.draftDirty = 'false';
       }
-    } catch { draftState.textContent = '暂存失败，请检查连接'; }
-    finally { if (draftSaving === draftSaveQueue) draftSaving = null; }
+      return true;
+    } catch { setDraftState('暂存失败，请检查连接', true); return false; }
+    finally { if (draftSaving === trackedSave) draftSaving = null; }
   }
-  if (draftUrl) {
-    fetch(draftUrl).then(response => response.ok ? response.json() : {}).then(saved => {
-      const alreadyFilled = [...new FormData(surveyFlow).entries()].some(([name, value]) =>
-        name.startsWith('q_') && String(value).trim());
-      if (!alreadyFilled && saved.answers) {
+  function restoreDraft() {
+    restoringDraft = true;
+    retryDraft.hidden = true;
+    setDraftState('正在恢复上次答案…');
+    draftRestorePromise = fetch(draftUrl).then(response => {
+      if (!response.ok) throw new Error('restore failed');
+      return response.json();
+    }).then(saved => {
+      if (!hasServerAnswers && saved.answers) {
         Object.entries(saved.answers).forEach(([name, answer]) => {
+          if (touchedDraftFields.has(name)) return;
           const inputs = [...surveyFlow.elements].filter(input => input.name === name);
           const chosen = Array.isArray(answer) ? answer : [answer];
           inputs.forEach(input => {
             if (input.type === 'radio' || input.type === 'checkbox') input.checked = chosen.includes(input.value);
-            else input.value = String(chosen[0] || '');
+            else input.value = String(chosen[0] ?? '');
           });
         });
         const mode = surveyFlow.querySelector('[name=identity_mode]');
-        if (mode && saved.identity_mode) mode.value = saved.identity_mode;
-        draftState.textContent = '已恢复上次暂存的答案';
-        assess();
+        if (mode && saved.identity_mode && !touchedDraftFields.has('identity_mode')) mode.value = saved.identity_mode;
+        fields.forEach(field => {
+          const clearChoice = field.querySelector('[data-clear-optional]');
+          if (clearChoice) clearChoice.hidden = !field.querySelector('input[type=radio]:checked');
+        });
+        setDraftState('已恢复上次暂存的答案');
+      } else {
+        setDraftState('');
       }
-    }).catch(() => { draftState.textContent = '暂存暂不可用'; }).finally(() => { restoringDraft = false; });
+      draftRestored = true;
+      assess();
+    }).catch(() => {
+      setDraftState('上次答案恢复失败。当前输入已保留，请重试恢复。', true);
+      retryDraft.hidden = false;
+    }).finally(() => {
+      restoringDraft = false;
+      scheduleDraftSave();
+    });
   }
-  surveyFlow.addEventListener('input', () => {
-    if (!draftUrl || restoringDraft) return;
+  if (draftUrl) {
+    restoreDraft();
+    retryDraft.addEventListener('click', restoreDraft);
+  }
+  function markDraftChanged(event) {
+    if (!draftUrl) return;
+    if (event.target.name) touchedDraftFields.add(event.target.name);
     draftRevision++;
     surveyFlow.dataset.draftDirty = 'true';
-    clearTimeout(draftTimer);
-    draftTimer = setTimeout(saveDraft, 900);
-  });
-  surveyFlow.addEventListener('change', () => {
-    if (!draftUrl || restoringDraft) return;
-    draftRevision++;
-    surveyFlow.dataset.draftDirty = 'true';
-    clearTimeout(draftTimer);
-    draftTimer = setTimeout(saveDraft, 900);
-  });
+    scheduleDraftSave();
+  }
+  surveyFlow.addEventListener('input', markDraftChanged);
+  surveyFlow.addEventListener('change', markDraftChanged);
 
   function clearErrors() {
     error.textContent = "";
@@ -289,9 +390,8 @@ if (surveyFlow) {
     fields.forEach(field => { field.hidden = !visible.has(field.dataset.questionId); });
     pageControls.hidden = !paged;
     if (paged) {
-      const start = currentPage * pageSize + 1;
-      const end = Math.min((currentPage + 1) * pageSize, reachableIds.length);
-      pageStatus.textContent = `第 ${start}–${end} 题 / 共 ${reachableIds.length} 题`;
+      const count = Math.min(pageSize, reachableIds.length - currentPage * pageSize);
+      pageStatus.textContent = `第 ${currentPage + 1} 组 / 共 ${pages} 组 · 本组 ${count} 题`;
       previousPage.disabled = currentPage === 0;
       nextPage.disabled = currentPage === pages - 1;
     }
@@ -302,13 +402,18 @@ if (surveyFlow) {
     if (index < 0) return;
     currentPage = Math.floor(index / pageSize);
     renderQuestionPage();
-    if (scroll) fields.find(field => field.dataset.questionId === id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (scroll) {
+      const target = fields.find(field => field.dataset.questionId === id);
+      target?.setAttribute('tabindex', '-1');
+      target?.focus({ preventScroll: true });
+      target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   }
 
   function changeQuestionPage(direction) {
     currentPage += direction;
     renderQuestionPage();
-    surveyFlow.querySelector('.response-questions').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    goToQuestion(reachableIds[currentPage * pageSize]);
   }
   previousPage?.addEventListener('click', () => changeQuestionPage(-1));
   nextPage?.addEventListener('click', () => changeQuestionPage(1));
@@ -338,7 +443,7 @@ if (surveyFlow) {
     if (progress) progress.style.width = `${progressValue}%`;
     if (progressTrack) progressTrack.setAttribute("aria-valuenow", String(progressValue));
     const problemCount = Object.keys(result.errors).length;
-    status.textContent = `已答 ${complete} / ${result.reachable.length} 题 · ${problemCount ? `待检查 ${problemCount} 题` : "可提交"}`;
+    status.textContent = `已答 ${complete} / ${result.reachable.length} 题 · ${!draftRestored ? '等待恢复上次答案' : problemCount ? `待检查 ${problemCount} 题` : "可提交"}`;
   }
 
   async function assess(showValidation = false) {
@@ -404,15 +509,24 @@ if (surveyFlow) {
       const hasAnswers = [...new FormData(surveyFlow).entries()].some(([name, value]) =>
         name.startsWith('q_') && String(value).trim() !== ''
       );
-      if (hasAnswers && surveyFlow.dataset.preview !== 'true') {
+      if ((hasAnswers || surveyFlow.dataset.draftDirty === 'true') && surveyFlow.dataset.preview !== 'true') {
         const confirmed = await askConfirmation({
           title: '退出填写？',
-          message: '已填写的答案会暂存，下次打开这份问卷可继续填写。',
+          message: '退出前会暂存当前答案，这份答卷尚未提交。',
           label: '退出填写'
         });
         if (!confirmed) return;
         clearTimeout(draftTimer);
-        await saveDraft();
+        const saved = await saveDraft();
+        if (!saved) {
+          error.textContent = '暂存失败，尚未退出。请检查连接后重试，已填写的内容仍在本页。';
+          return;
+        }
+        if (surveyFlow.dataset.draftDirty === 'true') {
+          error.textContent = '还有新输入尚未暂存，请再次点击退出填写。';
+          scheduleDraftSave();
+          return;
+        }
       }
       surveyFlow.dataset.submitting = 'true';
       window.location.assign(link.href);
@@ -424,6 +538,20 @@ if (surveyFlow) {
     goToQuestion(item.dataset.overviewQuestion);
   }));
   fields.forEach((field) => {
+    const clearChoice = field.querySelector('[data-clear-optional]');
+    if (clearChoice) {
+      const updateClearChoice = () => { clearChoice.hidden = !field.querySelector('input[type=radio]:checked'); };
+      field.addEventListener('change', updateClearChoice);
+      draftRestorePromise.then(updateClearChoice);
+      clearChoice.addEventListener('click', () => {
+        const selected = field.querySelector('input[type=radio]:checked');
+        if (!selected) return;
+        selected.checked = false;
+        selected.dispatchEvent(new Event('change', { bubbles: true }));
+        field.querySelector('input[type=radio]')?.focus({ preventScroll: true });
+      });
+      updateClearChoice();
+    }
     const changed = () => {
       field.querySelector("[data-question-error]").textContent = "";
       field.removeAttribute("aria-invalid");
@@ -440,6 +568,13 @@ if (surveyFlow) {
     clearTimeout(draftTimer);
     submitting = true;
     submitButton.disabled = true;
+    if (restoringDraft) await draftRestorePromise;
+    if (!draftRestored) {
+      error.textContent = '上次答案尚未恢复，请点击“重试恢复”后再提交。';
+      submitting = false;
+      submitButton.disabled = false;
+      return;
+    }
     const result = await assess(true);
     if (result && !Object.keys(result.errors).length) {
       const confirmed = surveyFlow.dataset.preview === 'true' || await askConfirmation({
@@ -457,6 +592,7 @@ if (surveyFlow) {
     }
     submitting = false;
     submitButton.disabled = false;
+    scheduleDraftSave();
   });
   directSubmitButton?.addEventListener("click", () => surveyFlow.requestSubmit());
   assess().then(() => {
@@ -473,7 +609,17 @@ document.querySelectorAll("[data-copy-url]").forEach((button) => {
       await navigator.clipboard.writeText(button.dataset.copyUrl);
       feedback.textContent = "链接已复制";
     } catch {
-      feedback.textContent = "复制失败，请打开链接后从地址栏复制。";
+      feedback.textContent = "未能自动复制，请手动复制下方链接。";
+      const link = document.createElement('input');
+      link.type = 'text';
+      link.readOnly = true;
+      link.value = button.dataset.copyUrl;
+      link.setAttribute('aria-label', '填写链接，供手动复制');
+      link.style.width = '100%';
+      link.style.minWidth = '0';
+      feedback.append(link);
+      link.focus();
+      link.select();
     }
   });
 });
@@ -508,6 +654,7 @@ if (jumpForm) {
 }
 
 document.querySelectorAll("[data-warn-unsaved]").forEach((form) => {
+  if (form.dataset.preview === 'true') return;
   function fingerprint() {
     const entries = [...new FormData(form).entries()].filter(([name]) => name !== "csrf_token")
       .map(([name, value]) => [name, name === "options" ? String(value).split('\n').map(v => v.trim()).filter(Boolean).join('\n') : value]);
@@ -648,7 +795,13 @@ if (questionEditor) {
       const number=document.createElement('span'); number.textContent=optionMarker(index+1);
       const input=document.createElement('input'); input.type='text'; input.value=text; input.placeholder=`选项 ${index+1}`; input.setAttribute('aria-label',`选项 ${index+1}`);
       input.addEventListener('input',writeOptions);
-      input.addEventListener('keydown', event => { if(event.key==='Enter') { event.preventDefault(); questionEditor.querySelector('[data-add-option]').click(); } });
+      input.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229) return;
+        event.preventDefault();
+        const next = row.nextElementSibling?.querySelector('input');
+        if (next) next.focus();
+        else if (input.value.trim()) questionEditor.querySelector('[data-add-option]').click();
+      });
       const move=document.createElement('button'); move.type='button'; move.textContent='↑'; move.title='上移选项'; move.setAttribute('aria-label',`上移选项 ${index+1}`); move.disabled=index===0;
       move.addEventListener('click',()=> { const vals=[...optionRows.querySelectorAll('input')].map(i=>i.value); [vals[index-1],vals[index]]=[vals[index],vals[index-1]]; renderRows(vals);writeOptions();optionRows.children[index-1].querySelector('input').focus(); });
       const remove=document.createElement('button'); remove.type='button'; remove.textContent='×'; remove.title='删除选项'; remove.setAttribute('aria-label',`删除选项 ${index+1}`); remove.disabled=values.length<=2;

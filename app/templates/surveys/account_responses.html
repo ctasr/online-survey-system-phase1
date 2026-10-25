@@ -2,28 +2,29 @@
 {% block title %}账号答卷 · {{ survey.title }}{% endblock %}
 {% block main_class %}content-page account-responses-page{% endblock %}
 {% block content %}
-<a class="back-link" href="{{ url_for('surveys.statistics', survey_id=survey._id) }}">← 返回统计结果</a>
+<a class="back-link" href="{{ statistics_back_url }}">← 返回统计结果</a>
 <div class="page-heading"><div><p class="eyebrow">{{ survey.title }}</p><h1>账号答卷 <span class="count-badge">{{ total }}</span></h1></div></div>
 <p class="hint">按账号查看每份已提交的答卷。匿名答卷只计入统计，不显示身份。</p>
 <form class="response-filters" method="get">
+  {% for key,value in statistics_context.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
   <label>查找账号 <input type="search" name="q" value="{{ query }}" placeholder="输入用户名"></label>
   <button type="submit">查找</button>
-  {% if query %}<a href="{{ url_for('surveys.survey_account_responses', survey_id=survey._id) }}">清除</a>{% endif %}
+  {% if query %}<a href="{{ url_for('surveys.survey_account_responses', survey_id=survey._id, **statistics_context) }}">清除</a>{% endif %}
 </form>
 {% if responses %}
 <div class="statistics-table-wrap"><table class="statistics-table account-responses-table">
   <thead><tr><th scope="col">账号</th><th scope="col">提交时间</th><th scope="col">已回答</th><th scope="col" aria-label="操作"></th></tr></thead>
   <tbody>{% for response in responses %}<tr>
     <th scope="row">{{ names.get(response.respondent_id, '账号已删除') }}</th>
-    <td>{{ local_time(response.submitted_at) }}</td>
-    <td>{{ response.answered_count }} / {{ response.answers|length }}</td>
-    <td><a href="{{ url_for('surveys.survey_account_response_detail', survey_id=survey._id, response_id=response._id) }}">查看答卷 →</a></td>
+    <td data-label="提交时间">{{ local_time(response.submitted_at) }}</td>
+    <td data-label="已回答">{{ response.answered_count }} / {{ response.answers|length }}</td>
+    <td><a href="{{ url_for('surveys.survey_account_response_detail', survey_id=survey._id, response_id=response._id, list_page=page, q=query, **statistics_context) }}">查看答卷 →</a></td>
   </tr>{% endfor %}</tbody>
 </table></div>
 {% else %}<div class="empty-state"><h2>{{ '没有找到这个账号的答卷' if query else '还没有账号答卷' }}</h2><p>{{ '换个用户名试试。' if query else '账号提交后，会在这里显示。' }}</p></div>{% endif %}
 {% if page_count > 1 %}<nav class="statistics-pages" aria-label="账号答卷分页">
-  {% if page > 1 %}<a href="{{ url_for('surveys.survey_account_responses', survey_id=survey._id, page=page-1, q=query) }}">← 上一页</a>{% endif %}
+  {% if page > 1 %}<a href="{{ url_for('surveys.survey_account_responses', survey_id=survey._id, page=page-1, q=query, **statistics_context) }}">← 上一页</a>{% endif %}
   <span>第 {{ page }} / {{ page_count }} 页</span>
-  {% if page < page_count %}<a href="{{ url_for('surveys.survey_account_responses', survey_id=survey._id, page=page+1, q=query) }}">下一页 →</a>{% endif %}
+  {% if page < page_count %}<a href="{{ url_for('surveys.survey_account_responses', survey_id=survey._id, page=page+1, q=query, **statistics_context) }}">下一页 →</a>{% endif %}
 </nav>{% endif %}
 {% endblock %}

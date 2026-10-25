@@ -4,6 +4,7 @@ import unittest
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 from uuid import uuid4
+from unittest.mock import patch
 
 from app import create_app
 
@@ -79,9 +80,11 @@ class SubmissionPolicyTests(unittest.TestCase):
         edited = self.post(owner, f"/surveys/{survey['_id']}/questions/{key[2:]}/edit", {
             "type": "text", "title": "新的题目内容", "required": "on",
         })
-        self.assertEqual(edited.status_code, 302)
+        self.assertEqual(edited.status_code, 409)
         detail = visitor.get(path).get_data(as_text=True)
-        self.assertIn('<span class="stat-question-number">1</span>回答</h2>', detail)
+        headings = [re.sub(r'<[^>]+>', '', heading).strip()
+                    for heading in re.findall(r'<h2\b[^>]*>(.*?)</h2>', detail, re.S)]
+        self.assertIn('1回答', headings)
         self.assertNotIn("新的题目内容", detail)
         self.assertEqual(visitor.get("/responses?page=not-a-number").status_code, 200)
         self.assertEqual(visitor.get("/responses/not-an-id").status_code, 404)
@@ -115,11 +118,19 @@ class SubmissionPolicyTests(unittest.TestCase):
             barrier.wait()
             return clients[index].post(public, data={
                 "csrf_token": tokens[index], "question_snapshot": snapshots[index], key: f"第{index + 1}份",
-            }).status_code
+            })
 
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            results = list(pool.map(submit, range(2)))
-        self.assertEqual(sorted(results), [302, 409])
+        # Both tabs passed the preliminary check before either write completed.
+        with patch('app.surveys.already_submitted', return_value=False):
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                results = list(pool.map(submit, range(2)))
+        self.assertEqual(sorted(response.status_code for response in results), [302, 409])
+        rejected = next(response for response in results if response.status_code == 409)
+        html = rejected.get_data(as_text=True)
+        self.assertIn('<!doctype html>', html)
+        self.assertIn('查看我的答卷', html)
+        self.assertIn('返回个人首页', html)
+        self.assertNotIn('data-survey-flow', html)
         saved = list(self.db.responses.find({"survey_id": survey["_id"]}))
         self.assertEqual(len(saved), 1)
         self.assertIsNone(saved[0]["respondent_id"])

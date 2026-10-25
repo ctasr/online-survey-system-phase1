@@ -14,6 +14,7 @@ from .api import api_bp
 from .db import init_db
 from .security import csrf_token
 from .surveys import surveys_bp
+from .question_bank import bank_bp, bank_api_bp
 
 
 def _secret_key():
@@ -44,19 +45,39 @@ def create_app():
     app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
     app.config["SESSION_COOKIE_SECURE"] = public_base_url.startswith("https://")
 
+    from .navigation import init_navigation
+    init_navigation(app)
     init_db(app)
     app.register_blueprint(auth_bp)
     app.register_blueprint(surveys_bp)
+    app.register_blueprint(bank_bp)
+    app.register_blueprint(bank_api_bp)
     app.register_blueprint(api_bp)
 
     @app.errorhandler(HTTPException)
     def http_error(error):
+        response = error.get_response()
         if request.path.startswith("/api/v1/"):
-            return jsonify(error=error.description), error.code
-        if error.code == 404:
-            return render_template("error.html", error_title="页面不存在",
-                                   error_message="链接可能有误，或者这份问卷已经无法访问。"), 404
-        return error
+            response.set_data(app.json.dumps({"error": error.description}))
+            response.mimetype = "application/json"
+            return response
+        messages = {
+            400: ("请求未能完成", "页面可能已过期，请返回原页面重新操作。"),
+            401: ("请先登录", "登录后可以继续操作。"),
+            403: ("暂时无法访问", "当前账号无法执行这项操作。"),
+            404: ("页面不存在", "链接可能有误，或者内容已被移除、无法访问。"),
+            405: ("此页面不支持该操作", "请返回原页面，使用页面提供的操作入口。"),
+            409: ("操作状态已变化", "内容可能已在其他页面修改，请返回核对后重试。"),
+            413: ("内容超出请求限制", "请返回原页面检查内容大小后重试。"),
+            415: ("请求格式不正确", "请返回原页面重新操作。"),
+            422: ("输入内容需要修改", "请返回原页面检查输入内容后重试。"),
+        }
+        title, message = messages.get(error.code, ("操作未完成", "请返回原页面检查后重试。"))
+        if error.code != 404 and error.description != type(error).description:
+            message = error.description
+        response.set_data(render_template("error.html", error_title=title, error_message=message))
+        response.mimetype = "text/html"
+        return response
 
     @app.errorhandler(500)
     def server_error(error):

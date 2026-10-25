@@ -2,31 +2,32 @@
 {% block title %}作答账号 · {{ question.title }}{% endblock %}
 {% block main_class %}content-page account-responses-page{% endblock %}
 {% block content %}
-<a class="back-link" href="{{ url_for('surveys.question_statistics', survey_id=survey._id, question_id=question.id) }}">← 返回单题统计</a>
+<a class="back-link" href="{{ url_for('surveys.question_statistics', survey_id=survey._id, question_id=question.id, version=version, answer_page=statistics_context.get('stats_answer_page', 1), _anchor='statistics-version-' ~ version ~ '-' ~ question.id, **statistics_context) }}">← 返回单题统计</a>
 <p class="eyebrow">{{ survey.title }} · 第 {{ version }} 版</p>
 <h1>本题的账号回答</h1>
 <p class="account-question-title">{{ question.title }}</p>
-{% if option_text is not none %}<p class="account-filter-chip">选择了「{{ option_text }}」</p>{% elif query and exact %}<p class="account-filter-chip">回答为「{{ query|truncate(120, True, '…') }}」</p>{% endif %}
+{% if option_text is not none %}<p class="account-filter-chip">选择了「{{ option_text }}」</p>{% elif query and exact %}<p class="account-filter-chip">回答为「{{ query|truncate(120, True, '…') }}」</p>{% elif answer_key %}<p class="account-filter-chip">匹配所选回答</p>{% endif %}
 <p class="hint">这里仅列出账号提交的答卷；匿名回答仍计入单题统计，但不显示身份。同一账号多次提交会列出多份答卷。</p>
 {% if option_index is none %}<form method="get" class="response-filters">
   <input type="hidden" name="version" value="{{ version }}">
+  {% for key,value in statistics_context.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
   <label>查找回答 <input type="search" name="q" value="{{ query if not exact else '' }}" placeholder="按回答内容查找"></label>
   <button type="submit">查找</button>
-  {% if query %}<a href="{{ url_for('surveys.question_account_responses', survey_id=survey._id, question_id=question.id, version=version) }}">清除筛选</a>{% endif %}
-</form>{% else %}<p><a href="{{ url_for('surveys.question_account_responses', survey_id=survey._id, question_id=question.id, version=version) }}">查看本题全部账号回答 →</a></p>{% endif %}
+  {% if query or answer_key %}<a href="{{ url_for('surveys.question_account_responses', survey_id=survey._id, question_id=question.id, version=version, **statistics_context) }}">清除筛选</a>{% endif %}
+</form>{% else %}<p><a href="{{ url_for('surveys.question_account_responses', survey_id=survey._id, question_id=question.id, version=version, **statistics_context) }}">查看本题全部账号回答 →</a></p>{% endif %}
 <p class="statistics-range">符合条件的账号答卷：{{ total }} 份</p>
 {% if responses %}<div class="statistics-table-wrap"><table class="statistics-table account-responses-table">
   <thead><tr><th scope="col">账号</th><th scope="col">本题回答</th><th scope="col">提交时间</th><th scope="col" aria-label="操作"></th></tr></thead>
   <tbody>{% for response in responses %}<tr>
     <th scope="row">{{ names.get(response.respondent_id, '账号已删除') }}</th>
-    <td class="account-answer">{% if response.answer is sequence and response.answer is not string %}{{ response.answer|join('、') }}{% else %}{{ response.answer }}{% endif %}</td>
-    <td>{{ local_time(response.submitted_at) }}</td>
-    <td><a href="{{ url_for('surveys.survey_account_response_detail', survey_id=survey._id, response_id=response._id) }}">查看答卷 →</a></td>
+    <td class="account-answer" data-label="本题回答">{% if response.answer is sequence and response.answer is not string %}{{ response.answer|join('、') }}{% else %}{{ response.answer }}{% endif %}</td>
+    <td data-label="提交时间">{{ local_time(response.submitted_at) }}</td>
+    <td><a href="{{ url_for('surveys.survey_account_response_detail', survey_id=survey._id, response_id=response._id, origin_question=question.id, version=version, option=option_index, exact='1' if exact else '', q='' if answer_key else query, answer_key=answer_key, list_page=page, **statistics_context) }}">查看答卷 →</a></td>
   </tr>{% endfor %}</tbody>
 </table></div>{% else %}<div class="empty-state"><h2>没有符合条件的账号回答</h2><p>匿名回答不会在这里显示。</p></div>{% endif %}
 {% if page_count > 1 %}<nav class="statistics-pages" aria-label="本题账号回答分页">
-  {% if page > 1 %}<a href="{{ url_for('surveys.question_account_responses', survey_id=survey._id, question_id=question.id, version=version, option=option_index, q=query, exact='1' if exact else '', page=page-1) }}">← 上一页</a>{% endif %}
+  {% if page > 1 %}<a href="{{ url_for('surveys.question_account_responses', survey_id=survey._id, question_id=question.id, version=version, option=option_index, q='' if answer_key else query, answer_key=answer_key, exact='1' if exact else '', page=page-1, **statistics_context) }}">← 上一页</a>{% endif %}
   <span>第 {{ page }} / {{ page_count }} 页</span>
-  {% if page < page_count %}<a href="{{ url_for('surveys.question_account_responses', survey_id=survey._id, question_id=question.id, version=version, option=option_index, q=query, exact='1' if exact else '', page=page+1) }}">下一页 →</a>{% endif %}
+  {% if page < page_count %}<a href="{{ url_for('surveys.question_account_responses', survey_id=survey._id, question_id=question.id, version=version, option=option_index, q='' if answer_key else query, answer_key=answer_key, exact='1' if exact else '', page=page+1, **statistics_context) }}">下一页 →</a>{% endif %}
 </nav>{% endif %}
 {% endblock %}

@@ -1,4 +1,4 @@
-# MongoDB schema（第一阶段）
+# MongoDB schema（第一阶段结构与第二阶段扩展）
 
 本文件描述程序实际写入的文档结构。MongoDB 采用灵活文档结构；此处是应用层 schema，字段合法性由 `app/questions.py`、`app/surveys.py`、`app/api.py` 校验，索引由 `app/db.py` 在启动时建立。示例中的 `ObjectId(...)` 和 `ISODate(...)` 表示 BSON 类型，不是可直接粘贴的 JSON 字符串。
 
@@ -42,11 +42,11 @@
     options: ["是", "否"],
     jumps: [{id: "rule-id", kind: "single_choice", option: "否", target_id: "后续题目ID"}]
   }],
-  question_history: []      // 改题后保存旧版本，供历史答卷统计
+  question_history: []      // 保留旧定义，供第一阶段历史答卷继续读取
 }
 ```
 
-`slug` 唯一，`owner_id` 建查询索引。发布时增加 `published_at`，关闭时增加 `closed_at`，均与 `created_at` 分开。多选题另有 `min_select`、`max_select`、`exact_select`；文本题有 `min_length`、`max_length`；数字题有 `min_value`、`max_value`、`integer_only`、`number_statistics`。跳转规则依题型使用选项、选项集合或数字比较条件，并仅指向后续题目。未设置的可选字段可能不存在或为 `null`；详细校验见 [系统与数据库设计](系统与数据库设计.md)。
+`slug` 唯一，`owner_id` 建查询索引。发布时增加 `published_at`，关闭时增加 `closed_at`，均与 `created_at` 分开。多选题另有 `min_select`、`max_select`、`exact_select`；文本题有 `min_length`、`max_length`；数字题有 `min_value`、`max_value`、`integer_only`、`number_statistics`。跳转规则依题型使用选项、选项集合或数字比较条件，并仅指向后续题目。未设置的可选字段可能不存在或为 `null`；详细校验见 [第二阶段设计与变更](第二阶段_设计与变更.md)。
 
 ## responses
 
@@ -71,7 +71,7 @@
   _id: ObjectId("..."),
   survey_id: ObjectId("..."),
   user_id: ObjectId("..."),
-  answers: {"a1b2c3d4e5f6a7b8": "是"},
+  answers: {"q_a1b2c3d4e5f6a7b8": "是"},
   identity_mode: "named",   // named / anonymous
   revision: 1,
   updated_at: ISODate("2026-10-21T12:03:00Z")
@@ -82,4 +82,56 @@
 
 ## 设计与迁移边界
 
-问卷内嵌有序题目，便于一次读取题目及跳转；不断增长的答卷独立存储，避免问卷文档无限膨胀。`question_history`只用于解释本问卷的旧答卷，不是独立题目库。发布、修改题目、关闭及限制一次填写的状态由应用代码维护。实际索引是可重复执行的 `create_index` 调用，无需手动导入 schema 才能运行；新增字段时须同步更新应用校验、旧答卷处理和测试。
+问卷内嵌有序题目，便于一次读取题目及跳转；不断增长的答卷独立存储，避免问卷文档无限膨胀。`question_history`只用于解释本问卷的旧答卷，不是独立题目库。发布、关闭及限制一次填写的状态由应用代码维护。实际索引是可重复执行的 `create_index` 调用，无需手动导入 schema 才能运行；新增字段时须同步更新应用校验、旧答卷处理和测试。
+
+## 第二阶段：question_library
+
+```javascript
+{
+  _id: ObjectId("..."),
+  root_id: ObjectId("..."),       // 同一道题的所有版本共享此 ID
+  version: 2,                    // 在 root_id 内递增
+  parent_id: ObjectId("..."),     // 当前版从哪一版修改而来；首版为 null
+  owner_id: ObjectId("..."),      // users._id
+  shared: false,                 // 是否向其他登录用户开放此版本
+  type: "single_choice",
+  title: "你最喜欢哪个季节？",
+  required: true,
+  options: ["春天", "夏天", "秋天", "冬天"],
+  created_at: ISODate("2026-10-23T00:00:00Z")
+}
+```
+
+多选、文本、数字题使用原有对应校验字段。恢复旧版时会创建新文档，并增加 `restored_from_id` 指向恢复来源。独立版本的定义创建后不原位改写；共享状态可由所有者切换。索引为 `(root_id, version)` 唯一、`(owner_id, created_at)`、`(shared, created_at)`。
+
+## 第二阶段：question_banks
+
+```javascript
+{
+  _id: ObjectId("..."),
+  owner_id: ObjectId("..."),
+  name: "常用调查",
+  question_ids: [ObjectId("..."), ObjectId("...")], // 准确的题目版本 ID
+  created_at: ISODate("2026-10-23T00:00:00Z")
+}
+```
+
+`(owner_id, name)` 唯一。题库替换版本时以当前 `question_ids` 列表作为条件写入，并在冲突后重读重试，不使用问卷的 `revision` 字段。题库只组织引用，改名或删除不会删除题目或问卷；更新题库条目到新版本也不会自动改变已存在问卷。
+
+## 第二阶段：问卷题目增加的来源字段
+
+从题目库选题时，`surveys.questions[]` 保留第一阶段的 `id`、`version`、题型、校验、跳转等字段，同时增加：
+
+```javascript
+{
+  library_question_id: ObjectId("..."),
+  library_root_id: ObjectId("..."),
+  library_version: 2,
+  library_source_question_version: 1
+}
+```
+
+前三项表示所选独立题目版本；最后一项记录该来源对应的问卷内题目版本，供跨问卷统计与答卷版本匹配。草稿直接修改已选题目内容时会解除来源关联，防止把修改后的答案错算入原题。第一阶段旧问卷不含这些字段仍可读写；把旧题目保存到题目库时只增加来源标记，不改变题目定义或已提交答卷。发布后题目及跳转固定。
+## 模拟示例的附加标记
+
+可选的校园服务示例工具只在新生成文档中保存 `demo_seed_suite`、`demo_key`、`demo_generated_at`、`demo_timeline_simulated`。前两项标识示例批次及防重复键，后两项保留实际生成时间并说明展示日期为模拟时间线。这些字段不参与题目权限、校验、跳转或统计，不新增集合，也不修改已有文档。

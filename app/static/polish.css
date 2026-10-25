@@ -17,6 +17,7 @@ input:not([type=checkbox]):not([type=radio]):not([type=hidden]):focus,textarea:f
 .hint,.answer-meta,.survey-list-main small { color:#62677c; }
 .notice { padding:12px 16px; border:1px solid #bfe6d5; border-radius:10px; background:#ecf9f3; color:#17654f; }
 .notice-error,.error:not(.question-error) { color:#a03948; }
+.notice-error { background:#fff2f1; border-color:#e5bbb7; color:#8b3039; }
 
 /* Sign-in and landing: readable fields and a compact, clear entry point. */
 .welcome-layout { align-items:stretch; box-shadow:0 26px 58px #3027551c; }
@@ -232,6 +233,18 @@ input:not([type=checkbox]):not([type=radio]):not([type=hidden]):focus,textarea:f
 .survey-detail-page .question-list.is-condensed > li { margin:5px 0; padding:9px 14px; }
 .survey-detail-page .question-list.is-condensed .question-list-heading { flex-wrap:nowrap; }
 .survey-detail-page .question-list.is-condensed .question-list-heading strong { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:15px; }
+.question-list-meta { display:inline-flex; align-items:center; flex-wrap:wrap; gap:6px; }
+.survey-detail-page .question-list.is-condensed .question-list-meta { flex:none; }
+.survey-detail-page .question-list.is-condensed > li.is-expanded .question-list-heading strong { white-space:normal; overflow:visible; }
+.survey-detail-page .question-list.is-condensed > li:not(.is-expanded) .library-actions { display:none; }
+@media(max-width:600px) {
+  .survey-detail-page .question-list.is-condensed .question-list-heading { display:grid; grid-template-columns:32px minmax(0,1fr) auto; align-items:start; gap:6px 8px; }
+  .survey-detail-page .question-list.is-condensed .question-list-number { grid-column:1; grid-row:1 / span 2; }
+  .survey-detail-page .question-list.is-condensed .question-list-heading strong { grid-column:2; grid-row:1; white-space:normal; overflow:visible; line-height:1.5; }
+  .survey-detail-page .question-list.is-condensed .question-list-meta { grid-column:2; grid-row:2; }
+  .survey-detail-page .question-list.is-condensed .question-type-label { font-size:12px; }
+  .survey-detail-page .question-list.is-condensed .question-expand { grid-column:3; grid-row:1 / span 2; }
+}
 .survey-detail-page .question-list.is-condensed > li:not(.is-expanded) .question-actions,.survey-detail-page .question-list.is-condensed > li:not(.is-expanded) .question-settings { display:none; }
 .survey-detail-page .question-list.is-condensed .question-actions { margin:8px 0 0; }
 .survey-detail-page .question-list.is-condensed .question-settings { margin:4px 0 0; }
@@ -262,13 +275,22 @@ input:not([type=checkbox]):not([type=radio]):not([type=hidden]):focus,textarea:f
 .response-detail-page .review-option { display:flex; align-items:center; justify-content:space-between; gap:16px; min-height:46px; box-sizing:border-box; padding:10px 15px; border:1px solid #e2e6ed; border-radius:10px; background:#f8f9fc; color:#4b566c; }
 .response-detail-page .review-option.is-selected { border-color:#91cbbb; background:#edf8f3; color:#205e51; font-weight:750; }
 .response-detail-page .review-option-text { min-width:0; overflow-wrap:anywhere; }
+.response-detail-page .review-option-marker { display:inline-block; min-width:25px; margin-right:6px; color:#446581; font-weight:800; white-space:nowrap; }
 .response-detail-page .review-selected-label { flex:none; color:#247461; font-size:13px; font-weight:800; }
 .response-detail-page .review-unanswered { margin:12px 0 0; color:#74657c; }
 .response-detail-page .answer-review.is-compact .review-option:not(.is-selected) { display:none; }
+.review-return { display:flex; margin-top:28px; padding-top:22px; border-top:1px solid #e4e8ef; }
+.clear-optional-answer { margin:10px 0 0; padding:8px 12px; min-height:40px; border:1px solid #ccd8e7; border-radius:8px; background:#f4f8fc; color:#2b527c; font:inherit; cursor:pointer; }
+.clear-optional-answer[hidden] { display:none; }
+.clear-optional-answer:hover { background:#e6eff9; }
 .review-toolbar { display:flex; align-items:center; justify-content:space-between; gap:14px; margin:20px 0 8px; }
 .review-toolbar p { margin:0; color:#59627b; }
 .review-toolbar button,.response-filters button { min-height:40px; padding:8px 14px; border:1px solid #cfc6e6; border-radius:9px; background:#f7f4ff; color:#513ba1; font:inherit; font-weight:750; cursor:pointer; }
 .review-toolbar button:hover,.response-filters button:hover { background:#ede8fb; }
+@media (max-width:600px) {
+  .response-detail-page .review-toolbar { flex-direction:column; align-items:stretch; gap:10px; }
+  .response-detail-page .review-toolbar button { align-self:flex-start; white-space:nowrap; }
+}
 .response-filters { display:flex; align-items:end; flex-wrap:wrap; gap:12px; margin:6px 0 24px; padding:17px; border:1px solid #e1e5ee; border-radius:14px; background:#fff; }
 .response-filters label { display:grid; gap:5px; color:#344057; font-weight:700; }
 .response-filters input { min-height:40px; padding:8px 11px; border:1px solid #ccd5e4; border-radius:8px; font:inherit; }
@@ -278,6 +300,7 @@ input:not([type=checkbox]):not([type=radio]):not([type=hidden]):focus,textarea:f
 .survey-filters button { min-height:44px; padding:9px 18px; border:1px solid #315a86; border-radius:9px; background:#315a86; color:#fff; font:inherit; font-weight:800; cursor:pointer; }
 .survey-filters > a { align-self:center; white-space:nowrap; }
 .draft-state { min-height:22px; margin:0 0 12px; color:#357669; font-size:14px; font-weight:700; }
+.draft-state.is-error { color:#b42318; }
 .question-form-context { margin:0 0 12px; padding:12px 15px; border-left:3px solid #c88747; border-radius:8px; background:#fff7e9; color:#6c5035; }
 .question-form-context a { color:#6a43a5; font-weight:750; }
 .jump-overview { margin:15px 0 24px; padding:15px 18px; border:1px solid #d8dfec; border-radius:12px; background:#f8fafd; }
@@ -402,3 +425,29 @@ input:not([type=checkbox]):not([type=radio]):not([type=hidden]):focus,textarea:f
 .account-filter-chip { display:inline-block; max-width:100%; margin:0 0 12px; padding:8px 12px; border-radius:9px; background:#edf5fc; color:#294968; font-weight:700; overflow-wrap:anywhere; }
 .account-responses-table .account-answer { max-width:380px; overflow-wrap:anywhere; white-space:normal; }
 .account-result-link { display:inline-flex; margin:9px 0 0; color:#415f82; font-size:14px; font-weight:700; }
+
+/* Give titles, source actions and editing controls distinct reading space. */
+.survey-detail-page .question-list:not(.is-condensed) > li { padding:26px 28px; margin:0 0 22px; }
+.survey-detail-page .question-list:not(.is-condensed) .question-list-heading { display:grid; grid-template-columns:38px minmax(0,1fr) auto; gap:12px 16px; align-items:start; }
+.survey-detail-page .question-list:not(.is-condensed) .question-list-heading strong { line-height:1.65; padding-top:1px; }
+.survey-detail-page .question-list:not(.is-condensed) .question-list-meta { padding-top:6px; gap:9px; }
+.survey-detail-page .question-source-actions { margin:18px 0 16px; gap:12px; }
+.survey-detail-page .question-source-actions a,.survey-detail-page .question-source-actions button { min-height:40px; box-sizing:border-box; padding:9px 14px; font-size:16px; }
+.survey-detail-page .question-list:not(.is-condensed) .question-actions { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin:0; }
+.survey-detail-page .question-list:not(.is-condensed) .question-actions a,.survey-detail-page .question-list:not(.is-condensed) .question-actions button { min-height:40px; box-sizing:border-box; padding:9px 13px; line-height:1.4; }
+.survey-detail-page .question-list:not(.is-condensed) .question-settings { margin-top:20px; padding-top:17px; }
+.response-detail-page .answer-review { display:grid; gap:24px; margin-top:26px; }
+.response-detail-page .answer-review > li { margin:0; padding:28px; }
+.response-detail-page .answer-review h2 { display:flex; align-items:flex-start; gap:16px; margin:0; line-height:1.65; }
+.response-detail-page .review-question-title { min-width:0; overflow-wrap:anywhere; }
+.response-detail-page .review-options,.response-detail-page .saved-answer { margin-top:20px; }
+.response-detail-page .review-option { min-height:52px; padding:13px 17px; line-height:1.6; }
+.response-detail-page .saved-answer { padding:17px 19px; line-height:1.8; }
+@media(max-width:800px) {
+  .survey-detail-page .question-list:not(.is-condensed) > li { padding:22px 20px; }
+  .survey-detail-page .question-list:not(.is-condensed) .question-list-heading { grid-template-columns:34px minmax(0,1fr); gap:8px 13px; }
+  .survey-detail-page .question-list:not(.is-condensed) .question-list-meta { grid-column:2; padding-top:0; }
+  .response-detail-page .answer-review > li { padding:22px 18px; }
+  .response-detail-page .answer-review h2 { gap:12px; }
+  .response-detail-page .review-option { gap:10px; }
+}

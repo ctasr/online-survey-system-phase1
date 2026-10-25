@@ -14,3 +14,4 @@ output/pdf/
 *.log
 tools/
 render.yaml
+output/

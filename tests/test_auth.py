@@ -96,6 +96,24 @@ class AccountFlowTests(unittest.TestCase):
         self.assertEqual(same_browser.get("/dashboard").status_code, 302)
         restarted_app.extensions["mongo_client"].close()
 
+    def test_login_returns_to_requested_page_with_filters_and_does_not_replay_post(self):
+        name = 'return_to_' + uuid4().hex
+        client = self.app.test_client()
+        self.submit(client, '/register', {'username': name, 'password': '123456', 'confirmation': '123456'})
+        destination = '/question-library?q=age&shared_page=2'
+        self.assertEqual(client.get(destination).location, '/login')
+        wrong = self.submit(client, '/login', {'username': name, 'password': 'wrong'})
+        self.assertEqual(wrong.status_code, 200)
+        signed_in = self.submit(client, '/login', {'username': name, 'password': '123456'})
+        self.assertEqual(signed_in.location, destination)
+        self.assertEqual(client.get(destination).status_code, 200)
+        with client.session_transaction() as saved:
+            saved.clear()
+        self.assertEqual(client.post('/question-banks', data={'name': '不能重放的请求'}).location, '/login')
+        signed_in = self.submit(client, '/login', {'username': name, 'password': '123456'})
+        self.assertEqual(signed_in.location, '/dashboard')
+        self.assertIsNone(self.db.question_banks.find_one({'name': '不能重放的请求'}))
+
     def test_home_is_guest_entry_and_signed_in_users_go_to_dashboard(self):
         client = self.app.test_client()
         guest_home = client.get("/")

@@ -1,6 +1,5 @@
 """JSON interface for the first-stage questionnaire workflow."""
 
-import hmac
 import secrets
 from copy import deepcopy
 from datetime import datetime, timezone
@@ -17,7 +16,7 @@ from .db import get_db
 from .jumps import build_jump_rule, jump_warnings, next_question_index
 from .numbering import option_style
 from .questions import build_question, validate_answer
-from .security import csrf_token
+from .security import csrf_token, valid_csrf
 from .sharing import survey_link
 from .statistics import summarize_responses, survey_overview
 from .surveys import (
@@ -43,9 +42,7 @@ def api_http_error(error):
 @api_bp.before_request
 def protect_json_mutations():
     if request.method in ("POST", "PATCH", "PUT", "DELETE"):
-        supplied = request.headers.get("X-CSRF-Token", "")
-        expected = session.get("csrf_token", "")
-        if not supplied or not expected or not hmac.compare_digest(supplied, expected):
+        if not valid_csrf():
             return fail("CSRF token 无效。", 400)
         if not request.is_json or not isinstance(request.get_json(silent=True), dict):
             return fail("请求体必须是 JSON 对象。", 415)
@@ -97,7 +94,15 @@ def iso(value):
 
 
 def question_json(question):
-    return {key: deepcopy(value) for key, value in question.items()}
+    def encode(value):
+        if isinstance(value, ObjectId):
+            return str(value)
+        if isinstance(value, dict):
+            return {key: encode(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [encode(item) for item in value]
+        return deepcopy(value)
+    return encode(question)
 
 
 def survey_json(survey, include_questions=True):
@@ -157,16 +162,23 @@ def form_for_jump(data):
     return fields
 
 
-def answer_form(data):
+def answer_form(data, questions=None):
     answers = data.get("answers")
     if not isinstance(answers, dict):
         raise ValueError("answers 必须是以题目 ID 为键的对象。")
+    definitions = {question['id']: question for question in questions or []}
     fields = MultiDict()
     for question_id, value in answers.items():
         if not isinstance(question_id, str):
             raise ValueError("题目 ID 格式不正确。")
         if value is None:
             continue
+        question = definitions.get(question_id)
+        if question is not None:
+            multiple = question['type'] == 'multiple_choice'
+            if multiple != isinstance(value, list):
+                expected = '数组' if multiple else '单个文字或数字'
+                raise ValueError(f"“{question['title']}”的答案必须是{expected}。")
         values = value if isinstance(value, list) else [value]
         if any(not isinstance(item, (str, int, float)) or isinstance(item, bool)
                for item in values):
@@ -236,7 +248,7 @@ def logout():
 def surveys_collection():
     must_login()
     if request.method == "GET":
-        surveys = get_db().surveys.find({"owner_id": g.user["_id"]}).sort("created_at", -1)
+        surveys = get_db().surveys.find({"owner_id": g.user["_id"]}).sort([("created_at", -1), ("_id", -1)])
         return jsonify(surveys=[survey_json(item, False) for item in surveys])
     data = payload()
     try:
@@ -284,11 +296,12 @@ def survey_item(survey_id):
     if request.method == "DELETE":
         result = get_db().surveys.delete_one({
             "_id": survey["_id"], "owner_id": g.user["_id"],
-            "revision": survey.get("revision", 1),
+            "revision": survey.get("revision", 1), "status": survey["status"],
         })
         if not result.deleted_count:
             abort(409, description="问卷已更新，请重试。")
         get_db().responses.delete_many({"survey_id": survey["_id"]})
+        get_db().response_drafts.delete_many({"survey_id": survey["_id"]})
         return jsonify(ok=True)
     allowed = {"title", "description", "allow_anonymous",
                "allow_multiple_submissions", "option_label_style", "deadline", "revision"}
@@ -314,9 +327,16 @@ def survey_item(survey_id):
                 abort(409, description="已关闭的问卷不能修改截止时间。")
             if data["deadline"] is not None and not isinstance(data["deadline"], str):
                 raise ValueError("截止时间格式不正确。")
-            changes["deadline"] = parse_deadline(data["deadline"] or "")
+            attempted_deadline = parse_deadline(data["deadline"] or "", allow_past=True)
+            changes["deadline"] = (survey.get("deadline") if iso(attempted_deadline) == iso(survey.get("deadline"))
+                                   else parse_deadline(data["deadline"] or ""))
     except ValueError as problem:
         return fail(str(problem), 422)
+    defaults = {"description": "", "allow_anonymous": False,
+                "allow_multiple_submissions": True, "option_label_style": option_style(survey)}
+    changes = {key: value for key, value in changes.items()
+               if (iso(value) != iso(survey.get(key)) if key == "deadline"
+                   else value != survey.get(key, defaults.get(key)))}
     if not changes:
         return jsonify(survey=survey_json(survey))
     if (changes.get("allow_multiple_submissions") is False
@@ -378,7 +398,7 @@ def questions_collection(survey_id):
     survey = owned(survey_id)
     if request.method == "GET":
         return jsonify(questions=[question_json(q) for q in active_questions(survey)])
-    if survey["status"] not in ("draft", "published"):
+    if survey["status"] != "draft":
         abort(409, description="这份问卷不能修改题目。")
     data = payload()
     revision_check(survey, data)
@@ -404,14 +424,12 @@ def question_item(survey_id, question_id):
         abort(404, description="题目不存在。")
     if request.method == "GET":
         return jsonify(question=question_json(questions[index]))
-    if survey["status"] not in ("draft", "published"):
+    if survey["status"] != "draft":
         abort(409, description="这份问卷不能修改题目。")
     data = payload()
     revision_check(survey, data)
     history = list(survey.get("question_history", []))
     if request.method == "DELETE":
-        if survey["status"] == "published" and len(active_questions(survey)) == 1:
-            return fail("已发布问卷至少保留一道题目。", 422)
         questions[index]["active"] = False
         for question in questions:
             if question.get("active", True):
@@ -429,7 +447,7 @@ def question_item(survey_id, question_id):
         return fail(str(problem), 422)
     original = questions[index]
     old_content = {k: v for k, v in original.items()
-                   if k not in ("id", "version", "active", "jumps")}
+                   if k not in ("id", "version", "active", "jumps", "library_question_id", "library_root_id", "library_version", "library_source_question_version")}
     new_content = {k: v for k, v in replacement.items() if k != "id"}
     if original["type"] == "number":
         old_content.setdefault("number_statistics", "distribution")
@@ -454,7 +472,7 @@ def question_item(survey_id, question_id):
 @api_bp.post("/surveys/<survey_id>/questions/<question_id>/jumps")
 def add_jump(survey_id, question_id):
     survey = owned(survey_id)
-    if survey["status"] not in ("draft", "published"):
+    if survey["status"] != "draft":
         abort(409, description="这份问卷不能修改跳转规则。")
     data = payload()
     revision_check(survey, data)
@@ -478,7 +496,7 @@ def add_jump(survey_id, question_id):
               methods=["PATCH", "DELETE"])
 def jump_item(survey_id, question_id, rule_id):
     survey = owned(survey_id)
-    if survey["status"] not in ("draft", "published"):
+    if survey["status"] != "draft":
         abort(409, description="这份问卷不能修改跳转规则。")
     data = payload()
     revision_check(survey, data)
@@ -516,7 +534,7 @@ def survey_statistics(survey_id):
     overview["first_submission"] = iso(overview["first_submission"])
     overview["last_submission"] = iso(overview["last_submission"])
     return jsonify(survey_id=survey_id, response_count=overview["response_count"], overview=overview,
-                   results=results)
+                   results=[{**row, "question": question_json(row["question"])} for row in results])
 
 
 @api_bp.get("/surveys/<survey_id>/statistics/<question_id>")
@@ -530,7 +548,8 @@ def question_statistics(survey_id, question_id):
                                             survey.get("question_history", []), return_overview=True)
     return jsonify(survey_id=survey_id, question_id=question_id,
                    response_count=overview["response_count"],
-                   results=[row for row in results if row["question"]["id"] == question_id])
+                   results=[{**row, "question": question_json(row["question"])} for row in results
+                            if row["question"]["id"] == question_id])
 
 
 def public_survey(slug):
@@ -562,7 +581,7 @@ def public_assess(slug):
         abort(409, description="你已提交过这份问卷。")
     data = payload()
     try:
-        form = answer_form(data)
+        form = answer_form(data, active_questions(survey))
     except ValueError as problem:
         return fail(str(problem), 422)
     questions = active_questions(survey)
@@ -598,7 +617,7 @@ def submit_response(slug):
         mode = data.get("identity_mode", "anonymous")
         if survey.get("allow_anonymous") and mode not in ("anonymous", "named"):
             raise ValueError("identity_mode 只能是 anonymous 或 named。")
-        form = answer_form(data)
+        form = answer_form(data, active_questions(survey))
         answers = validated_answers(active_questions(survey), form)
     except AnswerValidationError as problem:
         return jsonify(error=str(problem), question_id=problem.question_id), 422
@@ -635,6 +654,7 @@ def submit_response(slug):
                 and after_insert["deadline"].replace(tzinfo=timezone.utc) <= datetime.now(timezone.utc))):
         get_db().responses.delete_one({"_id": inserted.inserted_id})
         abort(409, description="问卷已修改、关闭或截止，请重新打开。")
+    get_db().response_drafts.delete_one({"survey_id": survey["_id"], "user_id": g.user["_id"]})
     return jsonify(response_id=str(inserted.inserted_id),
                    submitted_at=iso(response["submitted_at"])), 201
 
@@ -642,7 +662,7 @@ def submit_response(slug):
 @api_bp.get("/responses")
 def my_responses():
     must_login()
-    rows = get_db().responses.find(personal_answers_filter()).sort("submitted_at", -1)
+    rows = get_db().responses.find(personal_answers_filter()).sort([("submitted_at", -1), ("_id", -1)])
     return jsonify(responses=[{
         "id": str(row["_id"]), "survey_id": str(row["survey_id"]),
         "survey_title": row.get("survey_title", ""),

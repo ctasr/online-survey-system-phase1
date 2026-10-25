@@ -1,0 +1,9 @@
+<div class="library-update-box">
+  <div><span class="library-version">有新版本 v{{ update.target.version }}</span><h3>{{ update.target.title }}</h3><p>变化：{{ update.changes|join('、') or '内容相同' }}</p></div>
+  <form method="post" action="{{ url_for('bank.bank_question', bank_id=bank._id, question_id=source_id) }}" data-confirm-title="更新题库中的版本？" data-confirm-message="将 v{{ source_version }} 换为 v{{ update.target.version }}；已有问卷仍使用原版本。" data-confirm-label="更新版本">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="action" value="update">
+    <input type="hidden" name="target_id" value="{{ update.target._id }}">
+    <button type="submit">更新至 v{{ update.target.version }}</button>
+  </form>
+</div>

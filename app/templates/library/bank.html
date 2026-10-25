@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}{{ bank.name }} · 题目库{% endblock %}
+{% block main_class %}content-page{% endblock %}
+{% block content %}
+<p class="library-back"><a href="{{ url_for('bank.library') }}">← 返回题目库</a></p>
+<div class="page-heading library-bank-heading"><div><span class="library-eyebrow">我的题库</span><h1>{{ bank.name }}</h1><p>{{ bank.question_ids|length }} 道题</p></div><a class="primary-link" href="{{ url_for('bank.library', bank=bank._id) }}">＋ 添加题目</a></div>
+<details class="library-bank-settings" {% if name_error %}open{% endif %}><summary>管理题库名称</summary>{% if name_error %}<p class="error" id="bank-rename-error" role="alert">{{ name_error }}</p>{% endif %}<div class="library-bank-settings-body"><form method="post" action="{{ url_for('bank.rename_bank', bank_id=bank._id) }}" class="library-inline-form"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="original_name" value="{{ bank.name }}"><label for="rename-bank">题库名称</label><input id="rename-bank" name="name" value="{{ name_value }}" maxlength="80" required{% if name_error %} aria-invalid="true" aria-describedby="bank-rename-error" autofocus{% endif %}><button type="submit">保存名称</button></form><form method="post" action="{{ url_for('bank.delete_bank', bank_id=bank._id) }}" data-confirm-title="删除题库？" data-confirm-message="只删除这个题库，不删除其中的题目和问卷。" data-confirm-label="删除题库"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit" class="library-delete-bank">删除题库</button></form></div></details>
+<div class="library-grid library-bank-grid" id="bank-questions">
+{% for item in items %}
+<article class="library-card library-bank-item" id="bank-question-{{ item._id }}">
+  <div class="library-bank-item-heading"><div><span class="library-version">当前 v{{ item.version }} · {{ question_types[item.type] }}</span><strong><a href="{{ url_for('bank.question_detail', question_id=item._id, bank=bank._id, return_bank=1) }}">{{ item.title }}</a></strong></div></div>
+  {% if item._id in updates %}
+  {% with source_id=item._id, source_version=item.version, update=updates[item._id] %}{% include 'library/_bank_update.html' %}{% endwith %}
+  <details class="library-older"><summary>比较新旧版内容</summary><div class="library-compare"><div><h3>当前 v{{ item.version }} · {{ item.title }}</h3>{% include 'library/_definition.html' %}</div><div><h3>新版 v{{ updates[item._id].target.version }} · {{ updates[item._id].target.title }}</h3>{% with item=updates[item._id].target %}{% include 'library/_definition.html' %}{% endwith %}</div></div></details>
+  <p class="library-update-note">更新只影响这个题库，已经创建的问卷仍使用原版本。</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('bank.bank_question', bank_id=bank._id, question_id=item._id) }}" class="library-bank-remove"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="remove"><button type="submit">从题库移除</button></form>
+</article>
+{% endfor %}
+{% for unavailable_item in unavailable %}<article class="library-card library-bank-item" id="bank-question-{{ unavailable_item.id }}"><strong>{{ unavailable_item.title }}{% if unavailable_item.version %} · v{{ unavailable_item.version }}{% endif %}</strong><p>已停止共享，不能再加入新问卷；已创建的问卷保持原样。</p>{% if unavailable_item.id in updates %}{% with source_id=unavailable_item.id, source_version=unavailable_item.version, update=updates[unavailable_item.id] %}{% include 'library/_bank_update.html' %}{% endwith %}<details class="library-older"><summary>查看可用新版内容</summary>{% with item=updates[unavailable_item.id].target %}{% include 'library/_definition.html' %}{% endwith %}</details>{% endif %}<form method="post" action="{{ url_for('bank.bank_question', bank_id=bank._id, question_id=unavailable_item.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="action" value="remove"><button type="submit">从题库移除</button></form></article>{% endfor %}
+{% if not items and not unavailable %}<p class="library-empty">题库还没有题目。<a href="{{ url_for('bank.library', bank=bank._id) }}">去添加题目</a></p>{% endif %}
+</div>
+<script>
+const activeBankItem = document.getElementById(location.hash.slice(1));
+if (activeBankItem?.matches('.library-bank-item')) {
+  const notices = [...document.querySelectorAll('main > .notice')];
+  activeBankItem.prepend(...notices);
+  activeBankItem.setAttribute('tabindex', '-1');
+  activeBankItem.focus({preventScroll: true});
+  activeBankItem.scrollIntoView({block: 'start'});
+}
+</script>
+{% endblock %}

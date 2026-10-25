@@ -89,18 +89,16 @@ class SurveyPreviewTests(unittest.TestCase):
         self.assertEqual(published_preview.status_code, 200)
         self.assertEqual(visitor.get(preview).status_code, 404)
         stale_snapshot = self.snapshot(published_preview)
-        self.post(owner, f"{detail}/questions/{questions[2]['id']}/edit", {
+        self.assertEqual(self.post(owner, f"{detail}/questions/{questions[2]['id']}/edit", {
             "type": "number", "title": "分数（修正）", "required": "on",
             "min_value": "0", "max_value": "5",
-        })
+        }).status_code, 409)
         stale = owner.post(preview, data={
             "csrf_token": self.token(owner), "question_snapshot": stale_snapshot,
             keys[0]: "A", keys[2]: "8",
         })
-        self.assertEqual(stale.status_code, 409)
-        self.assertIn("问卷在你填写期间发生改动", stale.get_data(as_text=True))
-        self.assertIn('value="A" checked', stale.get_data(as_text=True))
-        self.assertNotIn('value="8"', stale.get_data(as_text=True))
+        self.assertEqual(stale.status_code, 200)
+        self.assertIn("预览答案没有保存", stale.get_data(as_text=True))
         self.assertEqual(self.db.responses.count_documents({"survey_id": survey["_id"]}), 0)
 
 

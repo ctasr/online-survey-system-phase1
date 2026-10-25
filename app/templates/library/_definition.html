@@ -1,0 +1,13 @@
+<div class="library-definition">
+  <p class="library-definition-meta">{{ question_types[item.type] }}{% if not item.required %} · 选答{% endif %}</p>
+  {% if item.type in ('single_choice', 'multiple_choice') %}
+    <ol class="library-definition-options">{% set marker_style = preview_option_style if preview_option_style is defined else option_style(survey) if survey is defined and survey else 'numeric' %}{% for option in item.options %}<li><span class="library-option-marker">{{ option_label(loop.index, marker_style) }}.</span> {{ option }}</li>{% endfor %}</ol>
+    {% if item.type == 'multiple_choice' and (item.get('exact_select') is not none or item.get('min_select') is not none or item.get('max_select') is not none) %}
+      <p class="library-definition-rule">{% if item.get('exact_select') is not none %}需选 {{ item.exact_select }} 项{% else %}{% if item.get('min_select') is not none %}至少选 {{ item.min_select }} 项{% endif %}{% if item.get('min_select') is not none and item.get('max_select') is not none %}，{% endif %}{% if item.get('max_select') is not none %}最多选 {{ item.max_select }} 项{% endif %}{% endif %}</p>
+    {% endif %}
+  {% elif item.type == 'text' %}
+    {% if item.get('min_length') is not none or item.get('max_length') is not none %}<p class="library-definition-rule">{% if item.get('min_length') is not none %}至少填写 {{ item.min_length }} 字{% endif %}{% if item.get('min_length') is not none and item.get('max_length') is not none %}，{% endif %}{% if item.get('max_length') is not none %}最多填写 {{ item.max_length }} 字{% endif %}</p>{% endif %}
+  {% else %}
+    {% if item.integer_only or item.get('min_value') is not none or item.get('max_value') is not none %}<p class="library-definition-rule">{% if item.integer_only %}只填整数{% endif %}{% if item.integer_only and (item.get('min_value') is not none or item.get('max_value') is not none) %}，{% endif %}{% if item.get('min_value') is not none %}不小于 {{ item.min_value }}{% endif %}{% if item.get('min_value') is not none and item.get('max_value') is not none %}，{% endif %}{% if item.get('max_value') is not none %}不大于 {{ item.max_value }}{% endif %}</p>{% endif %}
+  {% endif %}
+</div>

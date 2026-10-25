@@ -1,0 +1,136 @@
+/* Shared semantic colors: actions, status, warnings and data stay distinct. */
+:root {
+  --ink-strong:#203248; --ink-soft:#536478; --violet:#245b91;
+  --violet-dark:#19466f; --mint:#176c58; --line-soft:#d9e2ec;
+  --action:#245b91; --action-hover:#19466f; --action-soft:#edf4fc;
+  --success:#176c58; --success-soft:#eaf6f0;
+  --warning:#87520d; --warning-soft:#fff4df;
+  --danger:#ab3544; --danger-soft:#fff0f1;
+}
+body { background:#f3f6fa; color:var(--ink-strong); }
+a { color:var(--action); }
+h1,h2,h3 { color:#203248; }
+.site-nav .nav-main-links { background:#f0f3f7; }
+.site-nav .nav-item:not(.is-active) { color:#43556a; }
+.site-nav .nav-item.is-active { background:var(--action); color:#fff; box-shadow:0 3px 9px #245b9124; }
+.primary-button,.primary-link,.dashboard-page .home-header .primary-link,
+.survey-detail-page .survey-main-actions .primary-button,
+.survey-list-actions .survey-manage-link { border-color:var(--action); background:var(--action); color:#fff; box-shadow:0 4px 12px #245b9124; }
+.primary-button:hover,.primary-link:hover,.dashboard-page .home-header .primary-link:hover,
+.survey-detail-page .survey-main-actions .primary-button:hover,
+.survey-list-actions .survey-manage-link:hover { background:var(--action-hover); border-color:var(--action-hover); color:#fff; }
+.secondary-button,.survey-edit-link,.statistics-pages a,.response-filters button,
+.review-toolbar button,.statistics-search button,.statistics-search a { border-color:#bccddd; background:#f3f7fc; color:#264f75; }
+.secondary-button:hover,.survey-edit-link:hover,.statistics-pages a:hover,.review-toolbar button:hover { background:#e4eef9; color:#19466f; }
+.site-nav .nav-logout .text-button { background:#f7f9fc; border-color:#ccd6e1; color:#4a5d71; }
+.site-nav .nav-logout .text-button:hover { background:#e9eef4; color:#2c455e; }
+input:not([type=checkbox]):not([type=radio]):not([type=hidden]),textarea,select { border-color:#bac9d9; color:#22354b; }
+input:not([type=checkbox]):not([type=radio]):not([type=hidden]):focus,textarea:focus,select:focus { border-color:#3879b4; box-shadow:0 0 0 3px #3879b41f; }
+input[type=checkbox],input[type=radio] { accent-color:var(--action); }
+a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible { outline-color:#b76c12; }
+.hint,.answer-meta,.survey-list-main small,.statistics-range { color:#596b7e; }
+.count-badge,.question-list-number,.question-index-number,.stat-question-number,
+.response-detail-page .stat-question-number,.question-number { background:#e6eff9; color:#245b91; }
+.status[data-status="草稿"] { background:#eaf0f7; color:#45617d; }
+.status[data-status="已发布"] { background:var(--success-soft); color:var(--success); }
+.status[data-status="已截止"] { background:var(--warning-soft); color:var(--warning); }
+.status[data-status="已关闭"] { background:#edf0f3; color:#56616e; }
+.question-optional-label,.response-page .optional-label { background:var(--warning-soft); border-color:#dfba76; color:var(--warning); }
+.notice { background:var(--success-soft); color:var(--success); border-color:#badacb; }
+.notice-error,.error,.draft-state.is-error { color:var(--danger); }
+.notice-error { background:var(--danger-soft); border-color:#e7bcc1; }
+.inline-delete button,.survey-delete-button,.survey-list-actions .survey-delete-button { background:#fff7f8; border:1px solid #e5b7be; color:var(--danger); }
+.inline-delete button:hover,.survey-delete-button:hover { background:#ffe7ea; color:#8d2634; }
+
+/* Creation and management: editing, source versions and deletion are separate. */
+.survey-create-page .survey-edit-heading,.survey-edit-page .survey-edit-heading { background:linear-gradient(115deg,#203e5f,#326b8f); }
+.survey-edit-heading h1 { color:#fff; }
+.survey-detail-page .survey-main-actions { background:#f0f4f9; border-color:#d5dfe9; }
+.survey-detail-page .survey-details div { background:#edf4fc; border-left-color:#6b91b6; }
+.survey-detail-page .survey-details div:nth-child(2) { background:#f0f3f7; border-left-color:#8799ad; }
+.survey-detail-page .survey-details div:nth-child(3) { background:#fff5e4; border-left-color:#b78030; }
+.survey-detail-page .survey-main-actions > a,.survey-detail-page .survey-main-actions button { color:#245b91; border-color:#c7d5e3; }
+.question-actions a { background:#eaf2fc; color:#245b91; border:1px solid #c5d7eb; }
+.question-actions a[href$="/jumps/new"] { background:#fff3de; color:#87520d; border-color:#e2c38b; }
+.question-actions a:hover { background:#dceaf9; }
+.question-actions a[href$="/jumps/new"]:hover { background:#ffebc7; }
+.question-actions .inline-delete button { color:var(--danger); background:#fff7f8; border:1px solid #e5b7be; }
+.question-actions .inline-delete button:hover { color:#8d2634; background:#ffe7ea; }
+.question-source-actions a,.question-source-actions button { background:#f3f0f9; border-color:#d2c7e5; color:#654480; }
+.survey-detail-page .question-settings summary,.survey-detail-page .deadline-settings summary { color:#49617b; }
+.survey-detail-page .question-index a { background:#f2f6fb; color:#314d69; border-color:#d6e1ed; }
+.survey-detail-page .question-list > li,.response-detail-page .answer-review > li { border-left-color:#6b8dab; }
+.survey-detail-page .question-list > li:nth-child(even),.response-detail-page .answer-review > li:nth-child(even) { border-left-color:#97a9ba; }
+.survey-edit-segments input:checked + span,.survey-edit-setting-block.setting-display .survey-edit-segments input:checked + span { background:#e8f0fb; border-color:#668eb7; color:#245b91; box-shadow:inset 0 0 0 1px #668eb7; }
+.survey-edit-setting-block.setting-display { background:#f0f5fc; border-color:#cad9eb; }
+.survey-edit-setting-block.setting-display .survey-edit-choice-group legend { color:#245b91; }
+.question-preview { background:#f1f6fb; border-color:#cad9e8; }
+.type-choices button[aria-pressed="true"],.jump-choice:has(input:checked),.jump-target:has(input:checked) { background:#eaf2fc; border-color:#5e8ab4; color:#245b91; box-shadow:inset 0 0 0 1px #5e8ab4; }
+
+/* Answers: selection is blue; completion is green; an invalid answer is red. */
+.response-page .response-question { border-left-color:#6b8dab; }
+.answer-option-label,.preview-option-label { color:#426785; }
+.response-page .answer-option:has(input:checked) { background:#eaf2fc; border-color:#5b87b1; color:#1e4c77; }
+.response-page .answer-option:has(input:checked) .answer-option-label { color:#1e4c77; }
+.question-overview-item { background:#f4f6f9; border-color:#d4dee8; color:#526479; }
+.question-overview-item.is-answered { background:var(--success-soft); border-color:#a8ceba; }
+.question-overview-item.is-answered .overview-state { color:var(--success); }
+.question-overview-item.is-invalid { background:var(--danger-soft); border-color:#dc9da7; }
+.question-overview-item.is-invalid .overview-state { color:var(--danger); }
+.answer-progress-track { background:#e1e8ef; }
+.answer-progress-track > span { background:#207c66; }
+.response-detail-page .saved-answer { background:#f0f5fb; border-color:#d4dfec; color:#263e58; }
+.response-detail-page .review-option.is-selected { background:#eaf2fc; border-color:#8aaed0; color:#214f77; }
+.review-selected-label { color:#245b91; }
+
+/* Statistics: totals, anonymous and named submissions have stable identities. */
+.statistics-page .stat-overview > div { background:#edf4fc; border-color:#c8d9eb; border-top:3px solid #32699e; }
+.statistics-page .stat-overview > div:nth-child(2) { background:#fff5e4; border-color:#ead4aa; border-top-color:#b17420; }
+.statistics-page .stat-overview > div:nth-child(3) { background:#edf7f1; border-color:#c3dfd0; border-top-color:#2d8164; }
+.statistics-page .stat-overview strong { color:#245b91; }
+.statistics-page .stat-overview > div:nth-child(2) strong { color:#87520d; }
+.statistics-page .stat-overview > div:nth-child(3) strong { color:#176c58; }
+.statistics-page .stat-overview span,.number-stat-grid span { color:#4b5e71; }
+.statistics-page .question-stat-metrics > div { background:#f0f4f8; border:1px solid #dbe3eb; }
+.statistics-page .question-stat-metrics > .metric-answered { background:#edf4fc; border-color:#c9dbee; }
+.statistics-page .question-stat-metrics > .metric-answered strong { color:#245b91; }
+.statistics-page .question-stat-metrics > .metric-blank { background:#fff5e4; border-color:#ead4aa; }
+.statistics-page .question-stat-metrics > .metric-blank strong { color:#87520d; }
+.statistics-view-switch { background:#eaf0f6; }
+.statistics-view-switch a { color:#445c75; }
+.statistics-view-switch a[aria-current="page"] { background:var(--action); color:#fff; }
+.statistics-table thead th { background:#eaf0f7; color:#304b68; }
+.statistics-table tbody tr:nth-child(even) { background:#f6f8fb; }
+.statistics-table tbody tr:nth-child(even) > td,.statistics-table tbody tr:nth-child(even) > th { background:#f2f5f9; }
+.statistics-table tbody td:first-child { color:#426785; }
+.statistics-table tbody tr:hover { background:#eaf2fb; }
+.statistics-table tbody tr:hover > td,.statistics-table tbody tr:hover > th { background:#eaf2fb; }
+.statistics-notes summary { color:#49617b; }
+.statistics-table td a { color:#245b91; }
+.statistics-page .stat-question { border-color:#d8e2ec; background:#fff; }
+.statistics-page .stat-question h2 { color:#203248; }
+.option-results > li { --series:#32699e; }
+.option-results > li:nth-child(6n+2) { --series:#267f72; }
+.option-results > li:nth-child(6n+3) { --series:#a96b17; }
+.option-results > li:nth-child(6n+4) { --series:#79569e; }
+.option-results > li:nth-child(6n+5) { --series:#596b85; }
+.option-results > li:nth-child(6n+6) { --series:#a2543f; }
+.option-results .result-track { background:#e8edf3; }
+.option-results .result-bar { background:var(--series); }
+.option-results .option-result-marker { color:var(--series); }
+.option-results .option-result-label strong { color:#344c65; }
+.number-stat-grid > div { background:#edf4fc; border-color:#c9dbee; }
+.number-stat-grid > div strong { color:#245b91; }
+.number-stat-grid > div:nth-child(2) { background:#f5f0fa; border-color:#dcd0e9; }
+.number-stat-grid > div:nth-child(2) strong { color:#684382; }
+.number-stat-grid > div:nth-child(3) { background:#edf7f1; border-color:#c3dfd0; }
+.number-stat-grid > div:nth-child(3) strong { color:#176c58; }
+.number-stat-grid > div:nth-child(4) { background:#fff5e4; border-color:#ead4aa; }
+.number-stat-grid > div:nth-child(4) strong { color:#87520d; }
+.statistics-account-link { background:#f0f5fb; border-color:#d0deec; }
+.stat-detail-link { background:#eaf2fc; color:#245b91; }
+
+.library-section-mine::before { background:#32699e; }
+.library-section-shared::before { background:#267f72; }
+.library-filters a.is-active { background:#eaf2fc; border-color:#86a8cb; color:#245b91; }
+.library-hero .primary-link { background:#fff; border-color:#fff; color:#245b91; }

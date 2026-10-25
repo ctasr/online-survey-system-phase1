@@ -24,6 +24,8 @@ def login_required(view):
     @wraps(view)
     def wrapped(*args, **kwargs):
         if g.user is None:
+            if request.method == "GET" and request.path.startswith("/") and not request.path.startswith("//"):
+                session["after_login"] = request.full_path.removesuffix("?")
             return redirect(url_for("auth.login"))
         return view(*args, **kwargs)
 
@@ -105,7 +107,7 @@ def dashboard():
     from .surveys import active_questions, local_time, status_text, personal_answers_filter
 
     surveys = list(get_db().surveys.find({"owner_id": g.user["_id"]})
-                   .sort("created_at", -1).limit(4))
+                   .sort([("created_at", -1), ("_id", -1)]).limit(4))
     for survey in surveys:
         survey["visible_questions"] = active_questions(survey)
     return render_template("dashboard.html", surveys=surveys, status_text=status_text,

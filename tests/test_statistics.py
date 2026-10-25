@@ -8,6 +8,28 @@ from app.statistics import summarize_responses
 
 
 class StatisticsCalculationTests(unittest.TestCase):
+    def test_removed_questions_keep_real_history_without_empty_draft_rows(self):
+        questions = [
+            {"id": "unused", "type": "text", "title": "发布前删除", "active": False},
+            {"id": "legacy", "type": "text", "title": "旧答卷包含的题", "active": False},
+            {"id": "current", "type": "text", "title": "当前第一题"},
+        ]
+        responses = [{"answers": [{"question_id": "legacy", "value": "历史回答"}]}]
+        results = summarize_responses(questions, responses)
+        self.assertEqual([row['question']['id'] for row in results], ['legacy', 'current'])
+        self.assertTrue(results[0]['historical'])
+        self.assertEqual(results[0]['values'], ['历史回答'])
+        self.assertEqual(results[1]['index'], 1)
+
+    def test_equivalent_numeric_answers_share_one_distribution_entry(self):
+        values = ["30", "30.0", "3e1", "-0", "0"]
+        questions = [{"id": "number", "type": "number", "title": "数值"}]
+        responses = [{"answers": [{"question_id": "number", "value": value}]} for value in values]
+        result = summarize_responses(questions, responses)[0]
+        self.assertEqual(result["number_frequencies"], [("30", 3), ("0", 2)])
+        self.assertEqual(result["values"], values)
+        self.assertEqual(result["minimum"], "0")
+
     def test_numeric_answers_default_to_distribution_without_mean(self):
         questions = [{"id": "calculation", "type": "number", "title": "9 的平方是多少？"}]
         responses = [{"answers": [{"question_id": "calculation", "value": value}]}
@@ -92,7 +114,7 @@ class StatisticsTests(unittest.TestCase):
 
         table = owner.get(detail + "/statistics").get_data(as_text=True)
         self.assertIn("表格总览", table)
-        self.assertIn('class="statistics-table"', table)
+        self.assertRegex(table, r'<table\b[^>]*class="[^\"]*\bstatistics-table\b[^\"]*"')
         self.assertIn("题目11", table)
         self.assertNotIn('class="stat-question"', table)
         searched = owner.get(detail + "/statistics?q=题目11").get_data(as_text=True)

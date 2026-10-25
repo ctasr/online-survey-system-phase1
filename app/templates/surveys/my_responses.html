@@ -8,9 +8,9 @@
 <ul class="survey-list response-list">
 {% for response in responses %}
   <li><div class="survey-list-main">
-    <a href="{{ url_for('surveys.response_detail', response_id=response._id) }}">{{ response.get('survey_title') or surveys.get(response.survey_id, {}).get('title', '问卷已不可用') }}</a>
+    <a href="{{ url_for('surveys.response_detail', response_id=response._id, list_page=page, q=title_query, date=submitted_on) }}">{{ response.get('survey_title') or surveys.get(response.survey_id, {}).get('title', '问卷已不可用') }}</a>
     <small>{{ local_time(response.submitted_at) }} 提交 · {{ '匿名填写' if response.respondent_id is none else '账号填写' }}</small>
-  </div><a class="secondary-button" href="{{ url_for('surveys.response_detail', response_id=response._id) }}">查看答卷 →</a></li>
+  </div><a class="secondary-button" href="{{ url_for('surveys.response_detail', response_id=response._id, list_page=page, q=title_query, date=submitted_on) }}">查看答卷 →</a></li>
 {% endfor %}
 </ul>
 {% if pages > 1 %}<nav class="statistics-pages" aria-label="答卷列表分页">{% if page > 1 %}<a href="{{ url_for('surveys.my_responses', page=page-1, q=title_query, date=submitted_on) }}">← 上一页</a>{% endif %}<span>第 {{ page }} / {{ pages }} 页</span>{% if page < pages %}<a href="{{ url_for('surveys.my_responses', page=page+1, q=title_query, date=submitted_on) }}">下一页 →</a>{% endif %}<form method="get" action="{{ url_for('surveys.my_responses') }}"><input type="hidden" name="q" value="{{ title_query }}"><input type="hidden" name="date" value="{{ submitted_on }}"><label>跳到第 <input type="number" name="page" min="1" max="{{ pages }}" value="{{ page }}" aria-label="答卷列表页码" required> 页</label><button type="submit">跳转</button></form></nav>{% endif %}

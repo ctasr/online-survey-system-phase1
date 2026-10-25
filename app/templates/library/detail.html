@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}{{ item.title }} · 题目库{% endblock %}
+{% block main_class %}content-page{% endblock %}
+{% block content %}
+<p class="library-back"><a href="{{ back_url }}">← {{ '返回原问卷' if return_survey else '返回当前问卷选题' if survey else '返回题库' if selected_bank and request.args.get('return_bank') == '1' else '返回题目库' }}</a></p>
+<header class="library-detail-hero">
+  <div><span class="library-eyebrow">{{ question_types[item.type] }} · 第 {{ item.version }} 版</span><h1>{{ item.title }}</h1><p>{{ '已共享' if item.shared else '当前未共享' if item.owner_id == g.user._id else '已停止共享，仅供查看已有问卷' }} · 已用于 {{ usage_count }} 份问卷</p></div>
+  {% if item.owner_id == g.user._id or can_edit_in_survey %}<div class="library-actions library-detail-actions">{% if can_edit_in_survey %}<a href="{{ url_for('surveys.edit_question', survey_id=return_survey._id, question_id=return_question_id) }}">只修改这份问卷</a>{% endif %}{% if item.owner_id == g.user._id %}<a class="primary-link" href="{{ url_for('bank.new_version', question_id=item._id, **context_args) }}">创建题库新版本 →</a>{% endif %}</div>{% endif %}
+</header>
+<div class="library-detail-columns">
+  <div>
+    {% if survey %}<section class="library-section library-section-banks"><h2>用于「{{ survey.title }}」</h2>{% if already_added %}<p class="library-added">这个版本已加入问卷</p>{% elif reusable %}<form method="post" action="{{ url_for('bank.attach_question', survey_id=survey._id, question_id=item._id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="continue" value="yes"><input type="hidden" name="q" value="{{ request.args.get('q', '') }}"><input type="hidden" name="bank" value="{{ request.args.get('bank', '') }}"><input type="hidden" name="mine_page" value="{{ request.args.get('mine_page', '1') }}"><input type="hidden" name="shared_page" value="{{ request.args.get('shared_page', '1') }}"><button type="submit">加入并继续选题</button></form>{% else %}<p>此版本已停止共享，不能加入新问卷。</p>{% endif %}</section>{% endif %}
+    <section class="library-section library-section-mine"><h2>题目内容与填写规则</h2>{% include 'library/_definition.html' %}</section>
+    {% if parent_version %}<section class="library-section"><h2>与来源版本比较</h2><p>从 v{{ parent_version.version }} 创建此版本；变化：{{ version_changes.get(item._id, [])|join('、') or '内容相同' }}</p><div class="library-compare"><div><h3>来源 v{{ parent_version.version }} · {{ parent_version.title }}</h3>{% with item=parent_version %}{% include 'library/_definition.html' %}{% endwith %}</div><div><h3>当前 v{{ item.version }} · {{ item.title }}</h3>{% include 'library/_definition.html' %}</div></div></section>{% endif %}
+    <section class="library-section"><h2>版本历史</h2><div class="library-version-list">{% for version in versions %}<a href="{{ url_for('bank.question_detail', question_id=version._id, **context_args) }}" class="{{ 'is-current' if version._id == item._id else '' }}">v{{ version.version }} · {{ version.title }}{% if version.parent_id and version.parent_id in version_by_id %}<small>源自 v{{ version_by_id[version.parent_id] }}{% if version_changes.get(version._id) %} · 改动：{{ version_changes[version._id]|join('、') }}{% endif %}</small>{% endif %}</a>{% endfor %}</div>{% if item.owner_id == g.user._id and item.version < versions[-1].version %}<form method="post" action="{{ url_for('bank.restore_version', question_id=item._id, **context_args) }}" data-confirm-title="从旧版创建新版本？" data-confirm-message="会生成一个新版本，现有版本和问卷均保持原样。" data-confirm-label="创建新版本"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button type="submit">将此版内容恢复为新版本</button></form>{% endif %}</section>
+    <section class="library-section library-section-shared"><h2>跨问卷统计</h2>
+      {% if summary %}
+        <p class="library-stat-number"><strong>{{ summary.answered_count }}</strong><span>次有效回答</span></p>
+        {% if item.type in ('single_choice','multiple_choice') %}
+          <ul class="library-stat-list">{% for option,count in summary.option_counts.items() %}<li><div><span>{{ option }}</span><strong>{{ count }} 次</strong></div><span class="library-stat-track"><span style="width:{{ (count * 100 / summary.answered_count)|round|int if summary.answered_count else 0 }}%"></span></span></li>{% endfor %}</ul>
+        {% elif item.type == 'number' %}
+          <div class="library-number-overview"><div><span>平均值</span><strong>{{ summary.average if summary.average is not none else '暂无' }}</strong></div><div><span>中位数</span><strong>{{ summary.median if summary.median is not none else '暂无' }}</strong></div><div><span>最小值</span><strong>{{ summary.minimum if summary.minimum is not none else '暂无' }}</strong></div><div><span>最大值</span><strong>{{ summary.maximum if summary.maximum is not none else '暂无' }}</strong></div></div>
+          {% if number_distribution %}<h3>各数值的回答份数</h3><ul class="library-stat-list library-number-distribution">{% for row in number_distribution[:12] %}<li><div><span>{{ row.value }}</span><strong>{{ row.count }} 份 · {{ row.percent }}%</strong></div><span class="library-stat-track"><span style="width:{{ row.percent }}%"></span></span></li>{% endfor %}</ul>{% if number_distribution|length > 12 %}<details class="library-more-distribution"><summary>查看其余 {{ number_distribution|length - 12 }} 个数值</summary><ul class="library-stat-list">{% for row in number_distribution[12:] %}<li><div><span>{{ row.value }}</span><strong>{{ row.count }} 份 · {{ row.percent }}%</strong></div><span class="library-stat-track"><span style="width:{{ row.percent }}%"></span></span></li>{% endfor %}</ul></details>{% endif %}{% endif %}
+        {% endif %}
+        {% if item.type in ('number','text') %}<details><summary>查看我自己问卷中的填写内容</summary><ul>{% if own_summary %}{% for value in own_summary['values'] %}<li>{{ value }}</li>{% else %}<li>自己的问卷中暂无回答</li>{% endfor %}{% else %}<li>自己的问卷中暂无回答</li>{% endif %}</ul></details>{% endif %}
+      {% else %}<p class="library-empty">暂无回答。</p>{% endif %}
+    </section>
+  </div>
+  <div>
+    {% if item.owner_id == g.user._id %}<section class="library-section library-section-banks"><h2>共享</h2><p>{{ '其他用户可以在自己的问卷中使用此版本。停止共享后，别人不能再选用；已有问卷仍保留原题。' if item.shared else '其他用户现在不能将此版本加入新问卷；已有问卷仍可正常填写。' }}</p><form method="post" action="{{ url_for('bank.set_shared', question_id=item._id, **context_args) }}" {% if item.shared %}data-confirm-title="停止共享此版本？" data-confirm-message="其他用户不能再加入新问卷或题库；已创建的问卷和答卷保持原样。" data-confirm-label="停止共享"{% endif %}><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="shared" value="{{ 'no' if item.shared else 'yes' }}"><button type="submit">{{ '停止共享' if item.shared else '共享此版本' }}</button></form></section>{% endif %}
+    <section class="library-section" id="library-bank-actions"><h2>加入题库</h2>{% if not reusable %}<p>此版本已停止共享，不能再加入题库。</p>{% elif banks %}<div class="library-actions">{% for bank in banks %}{% if item._id in bank.question_ids %}<span class="library-added">「{{ bank.name }}」已收录</span>{% else %}<form method="post" action="{{ url_for('bank.bank_question', bank_id=bank._id, question_id=item._id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="return_to_detail" value="yes">{% for key,value in context_args.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}<button type="submit">加入「{{ bank.name }}」</button></form>{% endif %}{% endfor %}</div>{% else %}<p class="library-empty">还没有建立题库。可返回题目库创建。</p>{% endif %}</section>
+    <section class="library-section"><h2>使用情况</h2><p>此版本用于 {{ usage_count }} 份问卷。{% if external_references %}其他用户的问卷以匿名编号区分。{% endif %}</p><ul>{% for survey in usages %}<li><a href="{{ url_for('surveys.survey_detail', survey_id=survey._id) }}">{{ survey.title }}</a> · {{ '已发布' if survey.status == 'published' else '草稿' if survey.status == 'draft' else '已关闭' }}</li>{% endfor %}{% for reference in external_references %}<li>其他用户的问卷 · {{ reference.reference }}</li>{% endfor %}{% if not usages and not external_references %}<li>还没有问卷使用此版本。</li>{% endif %}</ul></section>
+  </div>
+</div>
+{% if version_overview|length > 1 %}<section class="library-section"><h2>各版本概览</h2><p>不同版本可能修改选项或规则，回答分别统计。</p><div class="library-grid">{% for row in version_overview %}<a class="library-card" href="{{ url_for('bank.question_detail', question_id=row.version._id, **context_args) }}"><span>v{{ row.version.version }}</span><strong>{{ row.version.title }}</strong><span>{{ row.survey_count }} 份问卷 · {{ row.answered_count }} 次有效回答</span></a>{% endfor %}</div></section>{% endif %}
+<script>
+const activeLibraryBankActions = document.getElementById('library-bank-actions');
+if (location.hash === '#library-bank-actions' && activeLibraryBankActions) {
+  activeLibraryBankActions.prepend(...document.querySelectorAll('main > .notice'));
+  activeLibraryBankActions.setAttribute('tabindex', '-1');
+  activeLibraryBankActions.focus({preventScroll: true});
+  activeLibraryBankActions.scrollIntoView({block: 'start'});
+}
+</script>
+{% endblock %}

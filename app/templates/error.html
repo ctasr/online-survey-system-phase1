@@ -7,7 +7,7 @@
     <h1>{{ error_title }}</h1>
     <p>{{ error_message }}</p>
     <div class="error-panel-actions">
-      <button type="button" class="secondary-button" onclick="window.location.reload()">重新加载</button>
+      <button type="button" class="secondary-button" data-error-back data-fallback-url="{{ url_for('auth.dashboard') if g.user else url_for('index') }}">返回上一页</button>
       <a class="primary-link" href="{{ url_for('auth.dashboard') if g.user else url_for('index') }}">{{ '返回个人首页' if g.user else '返回首页' }}</a>
     </div>
   </section>

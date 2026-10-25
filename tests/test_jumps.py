@@ -88,16 +88,18 @@ class JumpFlowTests(unittest.TestCase):
             "operator": "gte", "threshold": "18", "target_id": questions[6]["id"],
         }).status_code, 302)
         invalid = add_rule(4, {"operator": "lt", "threshold": "18", "target_id": questions[1]["id"]})
-        self.assertEqual(invalid.status_code, 302)
-        self.assertIn("只能跳转到后面的题目", owner.get(detail).get_data(as_text=True))
+        self.assertEqual(invalid.status_code, 422)
+        self.assertIn("只能跳转到后面的题目", invalid.get_data(as_text=True))
+        self.assertIn('value="18"', invalid.get_data(as_text=True))
         invalid = add_rule(4, {"operator": "gte", "threshold": "18.5", "target_id": questions[6]["id"]})
-        self.assertEqual(invalid.status_code, 302)
-        self.assertIn("设定的数字也必须是整数", owner.get(detail).get_data(as_text=True))
+        self.assertEqual(invalid.status_code, 422)
+        self.assertIn("设定的数字也必须是整数", invalid.get_data(as_text=True))
+        self.assertIn('value="18.5"', invalid.get_data(as_text=True))
         self.assertEqual(len(self.db.surveys.find_one({"_id": survey["_id"]})["questions"][4]["jumps"]), 1)
 
         self.post(owner, detail + "/publish", {})
         self.assertEqual(visitor.get(public).status_code, 200)
-        self.assertEqual(add_rule(0, {"option": "A", "target_id": questions[3]["id"]}).status_code, 302)
+        self.assertEqual(add_rule(0, {"option": "A", "target_id": questions[3]["id"]}).status_code, 409)
 
         keys = ["q_" + question["id"] for question in questions]
         next_path = public + "/next"

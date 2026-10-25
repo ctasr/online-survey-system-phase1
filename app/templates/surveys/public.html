@@ -11,12 +11,18 @@
     <p>这份问卷已关闭或已过截止时间，无法填写。</p>
   {% elif already_submitted %}
     <p>你已提交过这份问卷，不能重复填写。</p>
+  {% endif %}
+  {% if unavailable or already_submitted %}
+    <div class="flow-controls">
+      <a class="response-exit-link" href="{{ url_for('auth.dashboard') if g.user else url_for('index') }}">{{ '返回个人首页' if g.user else '返回首页' }}</a>
+      {% if already_submitted %}<a class="primary-button" href="{{ url_for('surveys.my_responses') }}">查看我的答卷</a>{% endif %}
+    </div>
   {% else %}
     {% if error and not error_question_id %}<p class="error" role="alert">{{ error }}</p>{% endif %}
     <form method="post" class="response-form" novalidate data-survey-flow data-warn-unsaved data-preview="{{ 'true' if preview else 'false' }}" {% if not preview %}data-draft-url="{{ url_for('surveys.response_draft', slug=survey.slug) }}"{% endif %} data-assess-url="{{ url_for('surveys.preview_assess', survey_id=survey_id) if preview else url_for('surveys.public_assess', slug=survey.slug) }}" data-error-question="{{ error_question_id or '' }}" data-initial-error="{{ error if error_question_id else '' }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="question_snapshot" value="{{ question_snapshot }}">
-      {% if not preview %}<p class="draft-state" data-draft-state role="status" aria-live="polite"></p>{% endif %}
+      {% if not preview %}<p class="draft-state" data-draft-state role="status" aria-live="polite"></p><button type="button" class="clear-optional-answer" data-retry-draft hidden>重试恢复</button>{% endif %}
       {% if can_confirm_unchanged is defined and can_confirm_unchanged %}
         <button type="button" class="primary-button" data-direct-submit>确认并提交已保留的答案</button>
       {% endif %}
@@ -37,17 +43,18 @@
             {% for option in question.options %}
               <label class="answer-option"><input type="radio" name="{{ key }}" value="{{ option }}" {% if form.get(key) == option %}checked{% endif %}><span class="answer-option-label">{{ option_label(loop.index, option_style(survey)) }}.</span><span>{{ option }}</span></label>
             {% endfor %}
+            {% if not question.required %}<button type="button" class="clear-optional-answer" data-clear-optional hidden>清除选择</button>{% endif %}
           {% elif question.type == 'multiple_choice' %}
             {% for option in question.options %}
               <label class="answer-option"><input type="checkbox" name="{{ key }}" value="{{ option }}" {% if option in form.getlist(key) %}checked{% endif %}><span class="answer-option-label">{{ option_label(loop.index, option_style(survey)) }}.</span><span>{{ option }}</span></label>
             {% endfor %}
-            {% if question.exact_select is not none or question.min_select is not none or question.max_select is not none %}<p class="hint">{% if question.exact_select is not none %}请选择 {{ question.exact_select }} 项{% else %}{% if question.min_select is not none %}至少选 {{ question.min_select }} 项{% endif %}{% if question.min_select is not none and question.max_select is not none %}，{% endif %}{% if question.max_select is not none %}最多选 {{ question.max_select }} 项{% endif %}{% endif %}。</p>{% endif %}
+            {% if question.get('exact_select') is not none or question.get('min_select') is not none or question.get('max_select') is not none %}<p class="hint">{% if question.get('exact_select') is not none %}请选择 {{ question.exact_select }} 项{% else %}{% if question.get('min_select') is not none %}至少选 {{ question.min_select }} 项{% endif %}{% if question.get('min_select') is not none and question.get('max_select') is not none %}，{% endif %}{% if question.get('max_select') is not none %}最多选 {{ question.max_select }} 项{% endif %}{% endif %}。</p>{% endif %}
           {% elif question.type == 'text' %}
             <textarea name="{{ key }}" rows="3" aria-label="{{ question.title }}">{{ form.get(key, '') }}</textarea>
-            {% if question.min_length is not none or question.max_length is not none %}<p class="hint">{% if question.min_length is not none %}至少填写 {{ question.min_length }} 字{% endif %}{% if question.min_length is not none and question.max_length is not none %}，{% endif %}{% if question.max_length is not none %}最多填写 {{ question.max_length }} 字{% endif %}。</p>{% endif %}
+            {% if question.get('min_length') is not none or question.get('max_length') is not none %}<p class="hint">{% if question.get('min_length') is not none %}至少填写 {{ question.min_length }} 字{% endif %}{% if question.get('min_length') is not none and question.get('max_length') is not none %}，{% endif %}{% if question.get('max_length') is not none %}最多填写 {{ question.max_length }} 字{% endif %}。</p>{% endif %}
           {% elif question.type == 'number' %}
             <input name="{{ key }}" type="number" step="{{ '1' if question.integer_only else 'any' }}" value="{{ form.get(key, '') }}" aria-label="{{ question.title }}">
-            {% if question.integer_only or question.min_value is not none or question.max_value is not none %}<p class="hint">{% if question.integer_only %}请填写整数{% endif %}{% if question.integer_only and (question.min_value is not none or question.max_value is not none) %}，{% endif %}{% if question.min_value is not none %}不能小于 {{ question.min_value }}{% endif %}{% if question.min_value is not none and question.max_value is not none %}，{% endif %}{% if question.max_value is not none %}不能大于 {{ question.max_value }}{% endif %}。</p>{% endif %}
+            {% if question.integer_only or question.get('min_value') is not none or question.get('max_value') is not none %}<p class="hint">{% if question.integer_only %}请填写整数{% endif %}{% if question.integer_only and (question.get('min_value') is not none or question.get('max_value') is not none) %}，{% endif %}{% if question.get('min_value') is not none %}不能小于 {{ question.min_value }}{% endif %}{% if question.get('min_value') is not none and question.get('max_value') is not none %}，{% endif %}{% if question.get('max_value') is not none %}不能大于 {{ question.max_value }}{% endif %}。</p>{% endif %}
           {% endif %}
           <p class="error question-error" data-question-error role="alert">{{ error if error_question_id == question.id else '' }}</p>
         </section>

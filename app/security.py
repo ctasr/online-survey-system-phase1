@@ -13,4 +13,7 @@ def csrf_token():
 def valid_csrf():
     supplied = request.form.get("csrf_token", "") or request.headers.get("X-CSRF-Token", "")
     expected = session.get("csrf_token", "")
-    return bool(expected) and hmac.compare_digest(supplied, expected)
+    if (not isinstance(supplied, str) or not isinstance(expected, str)
+            or not supplied or not expected or not supplied.isascii() or not expected.isascii()):
+        return False
+    return hmac.compare_digest(supplied, expected)

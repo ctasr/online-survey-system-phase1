@@ -2,7 +2,7 @@
 import unittest
 from datetime import datetime, timedelta, timezone
 from tests import test_stage2_library as library_tests
-from tools.seed_campus_examples import seed, SUITE
+from tests.campus_fixtures import seed, SUITE
 
 
 class CampusExampleTests(unittest.TestCase):

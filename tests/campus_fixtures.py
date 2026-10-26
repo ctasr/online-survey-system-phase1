@@ -1,17 +1,9 @@
-"""Add labelled campus-service examples; never rewrite existing surveys or answers.
-
-Run from the code directory: python -m tools.seed_campus_examples
-Business operations use application APIs. Only newly generated demo documents
-receive simulated timeline metadata; actual generation time remains recorded.
-"""
-import json
+"""Build labelled survey fixtures for isolated automated tests."""
 import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
 from bson import ObjectId
-from app import create_app
 
 SUITE = 'campus_examples_v1'
 
@@ -242,15 +234,3 @@ def seed(app, username='yyx'):
                           'received_responses':db.responses.count_documents({'survey_id':{'$in':[s['_id'] for s in db.surveys.find({'owner_id':yyx.id},{'_id':1})]}})},
         'shared_rating_question':'/question-library/'+common['id']}
     return report
-
-
-if __name__=='__main__':
-    app=create_app()
-    try:
-        report=seed(app)
-        output=Path(__file__).resolve().parents[1]/'output/校园服务模拟体验入口.json'
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
-        print(json.dumps(report,ensure_ascii=False,indent=2))
-    finally:
-        app.extensions['mongo_client'].close()

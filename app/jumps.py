@@ -1,5 +1,6 @@
 import secrets
-from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_FLOOR
+from decimal import Decimal, ROUND_CEILING, ROUND_FLOOR
+from .questions import _finite_decimal
 
 
 NUMBER_OPERATORS = {
@@ -44,11 +45,8 @@ def build_jump_rule(questions, source_index, form):
         raw = form.get("threshold", "").strip()
         if operator not in NUMBER_OPERATORS:
             raise ValueError("请选择有效的数字比较方式。")
-        try:
-            threshold = Decimal(raw)
-        except InvalidOperation as error:
-            raise ValueError("设定的数字必须是有效数字。") from error
-        if not threshold.is_finite():
+        threshold = _finite_decimal(raw, "设定的数字")
+        if threshold is None:
             raise ValueError("设定的数字必须是有效数字。")
         if source.get("integer_only") and threshold != threshold.to_integral_value():
             raise ValueError("这道题只允许填写整数，设定的数字也必须是整数。")
@@ -69,8 +67,13 @@ def rule_matches(rule, value):
         if rule["mode"] == "all":
             return wanted <= selected
         return selected == wanted
-    number = Decimal(value)
-    threshold = Decimal(rule["threshold"])
+    try:
+        number = _finite_decimal(value, "数字回答")
+        threshold = _finite_decimal(rule["threshold"], "设定的数字")
+    except ValueError:
+        return False
+    if number is None or threshold is None:
+        return False
     return {
         "lt": number < threshold,
         "lte": number <= threshold,
@@ -109,10 +112,10 @@ def rule_issue(question, rule, later):
         if rule.get("operator") not in NUMBER_OPERATORS:
             return "数字比较方式已失效"
         try:
-            threshold = Decimal(rule.get("threshold", ""))
-        except (InvalidOperation, TypeError):
+            threshold = _finite_decimal(rule.get("threshold", ""), "设定的数字")
+        except ValueError:
             return "设定的数字已失效"
-        if not threshold.is_finite() or (question.get("integer_only") and threshold != threshold.to_integral_value()):
+        if threshold is None or (question.get("integer_only") and threshold != threshold.to_integral_value()):
             return "设定的数字不符合这道题的要求"
     else:
         return "当前题型不支持跳转"
@@ -120,11 +123,16 @@ def rule_issue(question, rule, later):
 
 
 def _number_bounds(question, rules):
-    lower = Decimal(question["min_value"]) if question.get("min_value") is not None else None
-    upper = Decimal(question["max_value"]) if question.get("max_value") is not None else None
+    try:
+        lower = _finite_decimal(question.get("min_value"), "最小值")
+        upper = _finite_decimal(question.get("max_value"), "最大值")
+        values = [_finite_decimal(rule["threshold"], "设定的数字") for rule in rules]
+    except ValueError:
+        return False
     lower_inclusive = upper_inclusive = True
-    for rule in rules:
-        value = Decimal(rule["threshold"])
+    for rule, value in zip(rules, values):
+        if value is None:
+            return False
         operator = rule["operator"]
         if operator in ("gt", "gte", "eq"):
             inclusive = operator != "gt"

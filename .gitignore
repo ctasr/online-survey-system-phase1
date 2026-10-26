@@ -12,6 +12,8 @@ output/home-layout/
 output/docx/
 output/pdf/
 *.log
-tools/
+/tools/*
+!/tools/run_delivery_tests.py
+!/tools/seed_campus_examples.py
 render.yaml
 output/

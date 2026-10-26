@@ -62,7 +62,7 @@
 }
 ```
 
-`survey_id`、`(viewer_key, submitted_at)`、`(respondent_id, submitted_at)` 建查询索引。仅限制一次提交时，额外写入 `repeat_limited: true` 和不可逆的 `respondent_key`，并对 `(survey_id, respondent_key)` 建局部唯一索引。匿名答卷不存明文账号 ID。`answers` 只保存实际经过的题目：已回答的 `value` 按题型为文字、数字文本或选项数组；经过但未答的选答题保存 `null`，以便区分选答留空和条件跳过。被跳过的题目不进入 `answers`。已提交答卷不提供修改操作。
+`survey_id`、`(viewer_key, submitted_at)`、`(respondent_id, submitted_at)` 建查询索引。仅限制一次提交时，额外写入 `repeat_limited: true` 和不可逆的 `respondent_key`，并对 `(survey_id, respondent_key)` 建局部唯一索引。匿名答卷不存明文账号 ID。`answers` 只保存实际经过的题目：已回答的 `value` 按题型为文字、数字文本或选项数组；经过但未答的选答题保存 `null`，以便区分选答留空和条件跳过。被跳过的题目不进入 `answers`。已提交答卷不提供修改操作。数字原文保留，数字处理上限为输入2050字符、整数与有效小数部分各1000位。历史超限或损坏数字不改写原文，统计返回invalid_count单独说明，不将其算作选答留空。该计数由读取时计算，不新增集合或持久统计副本。
 
 ## response_drafts
 

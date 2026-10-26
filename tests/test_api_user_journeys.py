@@ -256,6 +256,43 @@ class ApiUserJourneyTests(unittest.TestCase):
         self.assertEqual(stats.status_code, 200, stats.json)
         self.assertEqual(stats.json['answered_count'], 1)
 
+    def test_settings_save_rechecks_closed_status_at_final_write(self):
+        for include_revision in (False, True):
+            with self.subTest(revision=include_revision):
+                owner, _ = self.actor()
+                doc = self.publish(owner, self.survey(owner, [
+                    dict(type='text', title='对午餐排队有什么建议？', required=True)]))
+                sid = ObjectId(doc['id'])
+                before = self.db.surveys.find_one({'_id': sid})
+                deadline = (datetime.now(timezone.utc) + timedelta(days=3)).astimezone(
+                    timezone(timedelta(hours=8))).strftime('%Y-%m-%dT%H:%M')
+                changes = {'deadline': deadline, 'description': '这段修改应在冲突时保留在客户端'}
+                if include_revision:
+                    changes['revision'] = doc['revision']
+                real_update = Collection.update_one
+                closed = []
+
+                def close_before_update(collection, query, update, *args, **kwargs):
+                    if collection.name == 'surveys' and query.get('_id') == sid and not closed:
+                        closed.append(True)
+                        real_update(collection, {'_id': sid}, {'$set': {'status': 'closed'}})
+                    return real_update(collection, query, update, *args, **kwargs)
+
+                with patch.object(Collection, 'update_one', close_before_update):
+                    result = self.call(owner, 'PATCH', '/surveys/' + doc['id'], changes)
+                self.assertTrue(closed)
+                self.assertEqual(result.status_code, 409, result.json)
+                after = self.db.surveys.find_one({'_id': sid})
+                self.assertEqual(after, {**before, 'status': 'closed'})
+                self.assertEqual(self.call(owner, 'PATCH', '/surveys/' + doc['id'], changes).status_code, 409)
+                # Other closed-survey settings remain editable after reading the current state.
+                retry = self.call(owner, 'PATCH', '/surveys/' + doc['id'],
+                                  {'description': '关闭后核对并保存的说明', 'revision': doc['revision']})
+                self.assertEqual(retry.status_code, 200, retry.json)
+                self.assertEqual(retry.json['survey']['description'], '关闭后核对并保存的说明')
+                self.assertEqual(retry.json['survey']['status'], 'closed')
+                self.assertIsNone(retry.json['survey']['deadline'])
+
     def test_saving_unchanged_settings_does_not_interrupt_someone_filling(self):
         owner, _ = self.actor()
         writer, _ = self.actor()

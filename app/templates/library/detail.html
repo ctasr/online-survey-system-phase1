@@ -2,10 +2,11 @@
 {% block title %}{{ item.title }} · 题目库{% endblock %}
 {% block main_class %}content-page{% endblock %}
 {% block content %}
+{% macro number_summary(summary) %}<div class="library-number-overview"><div><span>平均值</span><strong>{{ summary.average if summary.average is not none else '暂无' }}</strong></div><div><span>中位数</span><strong>{{ summary.median if summary.median is not none else '暂无' }}</strong></div><div><span>最小值</span><strong>{{ summary.minimum if summary.minimum is not none else '暂无' }}</strong></div><div><span>最大值</span><strong>{{ summary.maximum if summary.maximum is not none else '暂无' }}</strong></div></div>{% endmacro %}
 <p class="library-back"><a href="{{ back_url }}">← {{ '返回原问卷' if return_survey else '返回当前问卷选题' if survey else '返回题库' if selected_bank and request.args.get('return_bank') == '1' else '返回题目库' }}</a></p>
 <header class="library-detail-hero">
   <div><span class="library-eyebrow">{{ question_types[item.type] }} · 第 {{ item.version }} 版</span><h1>{{ item.title }}</h1><p>{{ '已共享' if item.shared else '当前未共享' if item.owner_id == g.user._id else '已停止共享，仅供查看已有问卷' }} · 已用于 {{ usage_count }} 份问卷</p></div>
-  {% if item.owner_id == g.user._id or can_edit_in_survey %}<div class="library-actions library-detail-actions">{% if can_edit_in_survey %}<a href="{{ url_for('surveys.edit_question', survey_id=return_survey._id, question_id=return_question_id) }}">只修改这份问卷</a>{% endif %}{% if item.owner_id == g.user._id %}<a class="primary-link" href="{{ url_for('bank.new_version', question_id=item._id, **context_args) }}">创建题库新版本 →</a>{% endif %}</div>{% endif %}
+  {% if item.owner_id == g.user._id or can_edit_in_survey %}<div class="library-actions library-detail-actions">{% if can_edit_in_survey %}<a href="{{ url_for('surveys.edit_question', survey_id=return_survey._id, question_id=return_question_id) }}">只修改这份问卷</a>{% endif %}{% if item.owner_id == g.user._id %}<a class="primary-link" href="{{ url_for('bank.new_version', question_id=item._id, **context_args) }}">创建题目新版本 →</a>{% endif %}</div>{% endif %}
 </header>
 <div class="library-detail-columns">
   <div>
@@ -16,13 +17,24 @@
     <section class="library-section library-section-shared"><h2>跨问卷统计</h2>
       {% if summary %}
         <p class="library-stat-number"><strong>{{ summary.answered_count }}</strong><span>次有效回答</span></p>
+        {% if summary.get('invalid_count') %}<p class="hint">{{ summary.invalid_count }} 条历史数字记录超出处理范围或格式不正确，未参与统计，原答卷仍保留。</p>{% endif %}
         {% if item.type in ('single_choice','multiple_choice') %}
           <ul class="library-stat-list">{% for option,count in summary.option_counts.items() %}<li><div><span>{{ option }}</span><strong>{{ count }} 次</strong></div><span class="library-stat-track"><span style="width:{{ (count * 100 / summary.answered_count)|round|int if summary.answered_count else 0 }}%"></span></span></li>{% endfor %}</ul>
         {% elif item.type == 'number' %}
-          <div class="library-number-overview"><div><span>平均值</span><strong>{{ summary.average if summary.average is not none else '暂无' }}</strong></div><div><span>中位数</span><strong>{{ summary.median if summary.median is not none else '暂无' }}</strong></div><div><span>最小值</span><strong>{{ summary.minimum if summary.minimum is not none else '暂无' }}</strong></div><div><span>最大值</span><strong>{{ summary.maximum if summary.maximum is not none else '暂无' }}</strong></div></div>
+          {% if item.get('number_statistics', 'distribution') == 'measure' %}{{ number_summary(summary) }}{% endif %}
           {% if number_distribution %}<h3>各数值的回答份数</h3><ul class="library-stat-list library-number-distribution">{% for row in number_distribution[:12] %}<li><div><span>{{ row.value }}</span><strong>{{ row.count }} 份 · {{ row.percent }}%</strong></div><span class="library-stat-track"><span style="width:{{ row.percent }}%"></span></span></li>{% endfor %}</ul>{% if number_distribution|length > 12 %}<details class="library-more-distribution"><summary>查看其余 {{ number_distribution|length - 12 }} 个数值</summary><ul class="library-stat-list">{% for row in number_distribution[12:] %}<li><div><span>{{ row.value }}</span><strong>{{ row.count }} 份 · {{ row.percent }}%</strong></div><span class="library-stat-track"><span style="width:{{ row.percent }}%"></span></span></li>{% endfor %}</ul></details>{% endif %}{% endif %}
+          {% if item.get('number_statistics', 'distribution') != 'measure' %}<details class="library-number-measures"><summary>查看数值概览</summary>{{ number_summary(summary) }}</details>{% endif %}
         {% endif %}
-        {% if item.type in ('number','text') %}<details><summary>查看我自己问卷中的填写内容</summary><ul>{% if own_summary %}{% for value in own_summary['values'] %}<li>{{ value }}</li>{% else %}<li>自己的问卷中暂无回答</li>{% endfor %}{% else %}<li>自己的问卷中暂无回答</li>{% endif %}</ul></details>{% endif %}
+        {% if item.type in ('number','text') %}<details class="library-own-values" id="library-own-values"{% if request.args.get('values_page') %} open{% endif %}>
+          <summary>查看我自己问卷中的填写内容 <span>共 {{ own_value_count }} 条</span></summary>
+          {% if own_values %}<ol start="{{ own_value_start + 1 }}">{% for value in own_values %}<li>{{ value }}</li>{% endfor %}</ol>
+          {% else %}<p class="library-empty">自己的问卷中暂无回答。</p>{% endif %}
+          {% if own_value_pages > 1 %}<nav class="library-pagination" aria-label="本人问卷填写内容分页">
+            {% if own_value_page > 1 %}<a href="{{ url_for('bank.question_detail', question_id=item._id, values_page=own_value_page - 1, **context_args) }}#library-own-values">← 上一页</a>{% endif %}
+            <span>第 {{ own_value_page }} / {{ own_value_pages }} 页</span>
+            {% if own_value_page < own_value_pages %}<a href="{{ url_for('bank.question_detail', question_id=item._id, values_page=own_value_page + 1, **context_args) }}#library-own-values">下一页 →</a>{% endif %}
+          </nav>{% endif %}
+        </details>{% endif %}
       {% else %}<p class="library-empty">暂无回答。</p>{% endif %}
     </section>
   </div>

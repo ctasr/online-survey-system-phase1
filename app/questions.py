@@ -1,4 +1,5 @@
 import secrets
+from copy import deepcopy
 from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_FLOOR
 
 
@@ -8,6 +9,36 @@ QUESTION_TYPES = {
     "text": "文本填空题",
     "number": "数字填空题",
 }
+
+MAX_NUMBER_INTEGER_DIGITS = 1000
+MAX_NUMBER_FRACTION_DIGITS = 1000
+MAX_NUMBER_INPUT_LENGTH = 2050
+
+
+def decimal_digit_counts(value):
+    """Count expanded places without rounding or expanding scientific notation."""
+    if value.is_zero():
+        return 1, 0
+    _, digits, exponent = value.as_tuple()
+    trailing = 0
+    for digit in reversed(digits):
+        if digit:
+            break
+        trailing += 1
+    return max(1, value.adjusted() + 1), max(0, -exponent - trailing)
+
+
+def definition_content(question):
+    """Compare question definitions without changing stored numeric representations."""
+    metadata = {"id", "version", "active", "jumps", "library_question_id",
+                "library_root_id", "library_version", "library_source_question_version"}
+    content = {key: deepcopy(value) for key, value in question.items() if key not in metadata}
+    if content.get("type") == "number":
+        content["number_statistics"] = content.get("number_statistics") or "distribution"
+        for key in ("min_value", "max_value"):
+            if content.get(key) is not None:
+                content[key] = Decimal(str(content[key]))
+    return content
 
 
 def _nonnegative_int(raw, label):
@@ -19,14 +50,30 @@ def _nonnegative_int(raw, label):
 
 
 def _finite_decimal(raw, label):
-    if not raw:
+    if raw is None:
         return None
+    if isinstance(raw, bool) or not isinstance(raw, (str, int, float, Decimal)):
+        raise ValueError(f"{label}必须是数字。")
     try:
-        value = Decimal(raw)
+        text = str(raw).strip()
+    except (ValueError, OverflowError) as error:
+        raise ValueError(f"{label}超出数字处理范围。") from error
+    if not text:
+        return None
+    if len(text) > MAX_NUMBER_INPUT_LENGTH:
+        raise ValueError(f"{label}输入过长，请缩短后重试。")
+    try:
+        value = Decimal(text)
     except InvalidOperation as error:
         raise ValueError(f"{label}必须是数字。") from error
     if not value.is_finite():
         raise ValueError(f"{label}必须是有限数字。")
+    integer_digits, fraction_digits = decimal_digit_counts(value)
+    if integer_digits > MAX_NUMBER_INTEGER_DIGITS or fraction_digits > MAX_NUMBER_FRACTION_DIGITS:
+        raise ValueError(f"{label}超出数字处理范围，整数和小数部分各不能超过 1000 位。")
+    # A zero with an extreme exponent is still zero; keep only its calculation form.
+    if value.is_zero():
+        return Decimal(0)
     return value
 
 

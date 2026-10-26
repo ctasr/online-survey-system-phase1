@@ -15,7 +15,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 from .db import get_db
 from .jumps import build_jump_rule, jump_warnings, next_question_index
 from .numbering import option_style
-from .questions import build_question, validate_answer
+from .questions import build_question, definition_content, validate_answer
 from .security import csrf_token, valid_csrf
 from .sharing import survey_link
 from .statistics import summarize_responses, survey_overview
@@ -345,7 +345,7 @@ def survey_item(survey_id):
     changes["updated_at"] = datetime.now(timezone.utc)
     result = get_db().surveys.update_one(
         {"_id": survey["_id"], "owner_id": g.user["_id"],
-         "revision": survey.get("revision", 1)},
+         "revision": survey.get("revision", 1), "status": survey["status"]},
         {"$set": changes, "$inc": {"revision": 1}},
     )
     if not result.modified_count:
@@ -446,11 +446,8 @@ def question_item(survey_id, question_id):
     except ValueError as problem:
         return fail(str(problem), 422)
     original = questions[index]
-    old_content = {k: v for k, v in original.items()
-                   if k not in ("id", "version", "active", "jumps", "library_question_id", "library_root_id", "library_version", "library_source_question_version")}
-    new_content = {k: v for k, v in replacement.items() if k != "id"}
-    if original["type"] == "number":
-        old_content.setdefault("number_statistics", "distribution")
+    old_content = definition_content(original)
+    new_content = definition_content(replacement)
     if new_content == old_content:
         return jsonify(question=question_json(original), revision=survey.get("revision", 1))
     if (original["type"] == "number" and replacement["type"] == "number"

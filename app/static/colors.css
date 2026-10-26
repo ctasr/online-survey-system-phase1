@@ -107,6 +107,8 @@ a:focus-visible,button:focus-visible,input:focus-visible,textarea:focus-visible,
 .statistics-table tbody tr:hover > td,.statistics-table tbody tr:hover > th { background:#eaf2fb; }
 .statistics-notes summary { color:#49617b; }
 .statistics-table td a { color:#245b91; }
+.statistics-answer-count { display:block; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.statistics-blank-note { display:block; margin-top:4px; color:#87520d; font-size:.8rem; white-space:nowrap; }
 .statistics-page .stat-question { border-color:#d8e2ec; background:#fff; }
 .statistics-page .stat-question h2 { color:#203248; }
 .option-results > li { --series:#32699e; }

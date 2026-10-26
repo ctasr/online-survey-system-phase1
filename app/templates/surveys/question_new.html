@@ -4,7 +4,7 @@
 {% block content %}
   <div class="form-page-heading editor-page-heading"><a href="{{ url_for('surveys.survey_detail', survey_id=survey._id, _anchor='question-' ~ question.id if question is defined else '') }}">← 返回问卷</a><div class="editor-title-row"><div><span class="editor-survey-name">{{ survey.title }}</span><h1>{{ '编辑' if question is defined else '添加' }}题目</h1></div></div></div>
   {% if question is not defined %}<p><a href="{{ url_for('bank.choose_question', survey_id=survey._id) }}">从题目库选用已有题目 →</a></p>{% endif %}
-  {% if question is defined and question.library_question_id %}<p class="hint">直接修改仅用于这份草稿，并与原题库版本解除关联。若想以后复用，可先<a href="{{ url_for('bank.question_detail', question_id=question.library_question_id, from_survey=survey._id, from_question=question.id) }}">查看题目库原版本</a>，再决定是否创建新版本。</p>{% endif %}
+  {% if question is defined and question.library_question_id %}<p class="hint">修改题目内容或答题规则后，仅用于这份草稿，并与原题目库版本解除关联。若想以后复用，可先<a href="{{ url_for('bank.question_detail', question_id=question.library_question_id, from_survey=survey._id, from_question=question.id) }}">查看题目库原版本</a>，再决定是否创建新版本。</p>{% endif %}
   {% include 'surveys/_edit_conflict.html' %}
   <div class="editor-layout">
   <form method="post" class="account-form question-form survey-editor-card" data-question-form data-option-style="{{ option_style(survey) }}" data-warn-unsaved>
@@ -54,7 +54,7 @@
       <label class="checkbox-row"><input name="integer_only" type="checkbox" {% if form.get('integer_only') == 'on' %}checked{% endif %}> 必须为整数</label>
       <label for="number-statistics">统计方式</label>
       <select id="number-statistics" name="number_statistics">
-        <option value="distribution" {% if form.get('number_statistics', 'distribution') == 'distribution' %}selected{% endif %}>按答案统计人数（默认，适合计算题等有确定答案的问题）</option>
+        <option value="distribution" {% if form.get('number_statistics', 'distribution') == 'distribution' %}selected{% endif %}>按答案查看分布（默认）</option>
         <option value="measure" {% if form.get('number_statistics') == 'measure' %}selected{% endif %}>数值测量（适合年龄、时长等，显示平均值与范围）</option>
       </select>
     </div>

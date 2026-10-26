@@ -169,6 +169,43 @@ class DraftExperienceTests(unittest.TestCase):
     def test_cancel_submit_confirmation_resumes_pending_autosave(self):
         self.page.goto(self.public_url)
         self.page.wait_for_timeout(100)  # Let the initial local draft GET settle before testing exit/submit.
+        # A failed older check must not replace the result of the latest input.
+        for failure in ('http', 'connection'):
+            with self.subTest(older_check=failure):
+                held = []
+                def hold_first_check(route):
+                    if not held:
+                        held.append(route)
+                    else:
+                        route.continue_()
+                pattern = '**/survey/' + self.slug + '/assess'
+                self.page.route(pattern, hold_first_check)
+                self.field(0).fill('等待检查的旧输入 ' + failure)
+                for _ in range(60):
+                    if held:
+                        break
+                    self.page.wait_for_timeout(50)
+                self.assertEqual(len(held), 1)
+                latest = '最新输入已经通过检查 ' + failure
+                with self.page.expect_response(lambda r: r.url.endswith('/assess') and
+                                               r.status == 200 and latest in (r.request.post_data or '')):
+                    self.field(0).fill(latest)
+                self.page.locator('[data-flow-status]').filter(has_text='可提交').wait_for()
+                if failure == 'http':
+                    held[0].fulfill(status=503, json={'error': '旧请求的临时错误'})
+                else:
+                    held[0].abort('failed')
+                self.page.wait_for_timeout(100)  # Allow the deliberately late error/catch to run.
+                self.page.unroute(pattern, hold_first_check)
+                self.assertEqual(self.page.locator('[data-flow-error]').inner_text(), '')
+                self.assertIn('可提交', self.page.locator('[data-flow-status]').inner_text())
+        def reject_current_check(route):
+            route.fulfill(status=503, json={'error': '当前检查暂时失败，请重试。'})
+        self.page.route(pattern, reject_current_check)
+        self.field(0).fill('当前请求失败时也不能丢失的输入')
+        self.page.locator('[data-flow-error]').filter(has_text='当前检查暂时失败').wait_for()
+        self.assertEqual(self.field(0).input_value(), '当前请求失败时也不能丢失的输入')
+        self.page.unroute(pattern, reject_current_check)
         self.field(0).fill('取消提交后仍应保留的内容')
         self.page.locator('[data-flow-submit]').click()
         self.page.locator('[data-confirm-title]').filter(has_text='提交答卷？').wait_for()

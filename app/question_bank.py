@@ -4,7 +4,6 @@ import re
 import secrets
 from copy import deepcopy
 from datetime import datetime, timezone
-from decimal import Decimal
 
 from bson import ObjectId
 from bson.errors import InvalidId
@@ -15,7 +14,7 @@ from werkzeug.exceptions import HTTPException
 from .auth import login_required
 from .db import get_db
 from .numbering import option_style
-from .questions import QUESTION_TYPES, build_question
+from .questions import QUESTION_TYPES, build_question, definition_content
 from .security import valid_csrf
 from .statistics import display_percent, summarize_responses
 
@@ -62,15 +61,8 @@ def question_fields(item):
 def make_version(source, form, *, restoring=False):
     parsed = build_question(form)
     if source and not restoring:
-        original = {key: source.get(key) for key in DEFINITION_KEYS}
-        changed = {key: parsed.get(key) for key in DEFINITION_KEYS}
-        if original["type"] == changed["type"] == "number":
-            original["number_statistics"] = original["number_statistics"] or "distribution"
-            for field in ("min_value", "max_value"):
-                if original[field] is not None:
-                    original[field] = Decimal(str(original[field]))
-                if changed[field] is not None:
-                    changed[field] = Decimal(str(changed[field]))
+        original = definition_content({key: source.get(key) for key in DEFINITION_KEYS})
+        changed = definition_content({key: parsed.get(key) for key in DEFINITION_KEYS})
         if original == changed:
             raise ValueError("题目内容没有变化，请修改后再保存。")
     root_id = source["root_id"] if source else ObjectId()
@@ -110,6 +102,7 @@ def version_groups(items):
 
 
 LIBRARY_PAGE_SIZE = 12
+LIBRARY_VALUES_PAGE_SIZE = 20
 
 
 def page_number(value):
@@ -349,13 +342,17 @@ def new_version(question_id):
                 context.pop(key, None)
             flash("原问卷已不存在或无法访问，仍可在题目库中保存新版本。", "info")
     error = None
+    status = 200
     if request.method == "POST":
         if not valid_csrf():
             abort(400)
         try:
             item = make_version(source, request.form)
-        except (ValueError, DuplicateKeyError) as problem:
-            error = str(problem) if isinstance(problem, ValueError) else "版本已变化，请刷新后重试。"
+        except ValueError as problem:
+            error = str(problem)
+        except DuplicateKeyError:
+            error = "另一页面刚保存了新版本。本次输入已保留，请直接重试保存。"
+            status = 409
         else:
             flash("新版本已保存，旧版本和已有问卷保持原样。", "success")
             return redirect(url_for("bank.question_detail", question_id=item["_id"], **context))
@@ -363,7 +360,7 @@ def new_version(question_id):
                            form=request.form if request.method == "POST" else form_values(source),
                            error=error, question_types=QUESTION_TYPES, context_args=context,
                            preview_option_style=preview_style,
-                           return_url=url_for("bank.question_detail", question_id=source["_id"], **context))
+                           return_url=url_for("bank.question_detail", question_id=source["_id"], **context)), status
 
 
 @bank_bp.post("/question-library/<question_id>/restore")
@@ -464,7 +461,8 @@ def cross_statistics_many(versions):
         if included:
             survey_owners[survey["_id"]] = survey["owner_id"]
     if survey_owners:
-        for response in get_db().responses.find({"survey_id": {"$in": list(survey_owners)}}):
+        for response in get_db().responses.find(
+                {"survey_id": {"$in": list(survey_owners)}}).sort([("submitted_at", 1), ("_id", 1)]):
             survey_id = response["survey_id"]
             for answer in response.get("answers", []):
                 source = answer_sources.get((survey_id, answer.get("question_id")))
@@ -599,6 +597,11 @@ def question_detail(question_id):
         context_args["bank"] = str(selected_bank["_id"])
         if request.args.get("return_bank") == "1":
             context_args["return_bank"] = "1"
+    own_summary = stats_by_version[item["_id"]]["own_summary"]
+    own_values = own_summary["values"] if own_summary else []
+    own_value_pages = max(1, (len(own_values) + LIBRARY_VALUES_PAGE_SIZE - 1) // LIBRARY_VALUES_PAGE_SIZE)
+    own_value_page = min(page_number(request.args.get("values_page")), own_value_pages)
+    own_value_start = (own_value_page - 1) * LIBRARY_VALUES_PAGE_SIZE
     return render_template("library/detail.html", item=item, versions=versions,
                            version_by_id=version_by_id, version_changes=version_changes,
                            parent_version=by_version_id.get(item.get("parent_id")),
@@ -606,7 +609,10 @@ def question_detail(question_id):
                            usages=visible_rows, external_references=external_references,
                            usage_count=len(rows), banks=banks,
                            summary=stats_by_version[item["_id"]]["summary"],
-                           own_summary=stats_by_version[item["_id"]]["own_summary"],
+                           own_summary=own_summary,
+                           own_values=own_values[own_value_start:own_value_start + LIBRARY_VALUES_PAGE_SIZE],
+                           own_value_count=len(own_values), own_value_page=own_value_page,
+                           own_value_pages=own_value_pages, own_value_start=own_value_start,
                            number_distribution=numeric_distribution(stats_by_version[item["_id"]]["summary"]),
                            back_url=back_url, survey=survey, return_survey=return_survey,
                            preview_option_style=option_style(survey or return_survey) if survey or return_survey else "numeric",
@@ -1039,6 +1045,7 @@ def api_statistics(question_id):
                    values_scope="own_surveys",
                    average=result["average"] if result else None)
     if item["type"] == "number":
+        result_data["invalid_count"] = result["invalid_count"] if result else 0
         result_data["median"] = result["median"] if result else None
         result_data["minimum"] = result["minimum"] if result else None
         result_data["maximum"] = result["maximum"] if result else None

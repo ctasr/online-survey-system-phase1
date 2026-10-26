@@ -542,7 +542,7 @@ class LibraryFlowTests(unittest.TestCase):
         self.assertIn(f"/surveys/{survey_id}#question-{linked['id']}",
                       version_page.get_data(as_text=True))
         self.assertIn("只修改这份问卷", version_page.get_data(as_text=True))
-        self.assertIn("创建题库新版本", version_page.get_data(as_text=True))
+        self.assertIn("创建题目新版本", version_page.get_data(as_text=True))
         self.assertIn(f"/surveys/{survey_id}/questions/{linked['id']}/edit",
                       version_page.get_data(as_text=True))
         back = self.post(owner, f"/question-banks/{bank_id}/questions/{selected['id']}", {
@@ -1171,6 +1171,53 @@ class LibraryFlowTests(unittest.TestCase):
         self.assertEqual(self.api(colleague, "POST", f"/api/v1/surveys/{another['_id']}/library-questions",
                                   {"question_id": first_id}).status_code, 404)
         self.assertEqual(visitor.get(f"/survey/{colleague_survey['slug']}").status_code, 200)
+
+
+    def test_equivalent_numeric_bounds_keep_source_and_real_changes_detach(self):
+        owner = self.app.test_client()
+        username = "numeric_bounds_" + uuid4().hex
+        self.login(owner, username)
+        source = self.api(owner, "POST", "/api/v1/library/questions", {
+            "type": "number", "title": "你每周的自习时长是多少小时？",
+            "required": True, "integer_only": True, "min_value": "0", "max_value": "100",
+        }).get_json()["question"]
+        source_document = self.db.question_library.find_one({"_id": ObjectId(source["id"])})
+        for channel in ("web", "api"):
+            with self.subTest(channel=channel):
+                survey = self.survey(owner, username, "自习安排_" + channel)
+                added = self.api(owner, "POST",
+                    f"/api/v1/surveys/{survey['_id']}/library-questions",
+                    {"question_id": source["id"]})
+                self.assertEqual(added.status_code, 201)
+                question_id = added.get_json()["question_id"]
+                before = self.db.surveys.find_one({"_id": survey["_id"]})
+
+                def save_bounds(minimum, maximum):
+                    if channel == "api":
+                        return self.api(owner, "PATCH",
+                            f"/api/v1/surveys/{survey['_id']}/questions/{question_id}",
+                            {"min_value": minimum, "max_value": maximum})
+                    return self.post(owner,
+                        f"/surveys/{survey['_id']}/questions/{question_id}/edit",
+                        {"type": "number", "title": source["definition"]["title"],
+                         "required": "on", "integer_only": "on",
+                         "min_value": minimum, "max_value": maximum,
+                         "number_statistics": "distribution"})
+
+                for minimum, maximum in (("0.0", "1e2"), ("-0e4", "100.00")):
+                    unchanged = save_bounds(minimum, maximum)
+                    self.assertEqual(unchanged.status_code, 200 if channel == "api" else 302)
+                    self.assertEqual(self.db.surveys.find_one({"_id": survey["_id"]}), before,
+                                     "Equivalent limits must preserve revision, history and library source.")
+                changed = save_bounds("-1", "100")
+                self.assertEqual(changed.status_code, 200 if channel == "api" else 302)
+                after = self.db.surveys.find_one({"_id": survey["_id"]})
+                self.assertEqual(after["revision"], before["revision"] + 1)
+                self.assertEqual(after["questions"][0]["min_value"], "-1")
+                self.assertNotIn("library_question_id", after["questions"][0])
+                self.assertEqual(after["question_history"], before.get("question_history", []) + before["questions"])
+                self.assertEqual(self.db.question_library.find_one({"_id": ObjectId(source["id"])}),
+                                 source_document)
 
 
 if __name__ == "__main__":

@@ -12,6 +12,11 @@ sys.path.insert(0, str(ROOT))
 
 
 class EvidenceResult(unittest.TextTestResult):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Class/module setup errors can arrive before startTest is called.
+        self.case_started = time.perf_counter()
+
     def startTest(self, test):
         super().startTest(test)
         self.case_started = time.perf_counter()
@@ -23,7 +28,9 @@ class EvidenceResult(unittest.TextTestResult):
         super().stopTest(test)
 
     def record(self, test, status, error=None, reason=None):
-        parent = getattr(test, 'test_case', test)
+        parent = getattr(test, 'test_case', None)
+        if not isinstance(parent, unittest.TestCase):
+            parent = test
         module = parent.__class__.__module__.rsplit('.', 1)[-1]
         response_only = {
             'test_stale_new_question_forms_preserve_input_without_saving_or_changing_survey',

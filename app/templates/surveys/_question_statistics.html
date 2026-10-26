@@ -7,6 +7,7 @@
     {% elif result.blank_count %}<div class="metric-blank"><span>旧答卷未填</span><strong>{{ result.blank_count }}</strong></div>{% endif %}
   </div>
   {% if result.question.required and result.blank_count %}<p class="hint">这部分来自旧答卷；当前必答校验不允许空白提交。</p>{% endif %}
+  {% if result.get('invalid_count') %}<details class="statistics-notes"><summary>{{ result.invalid_count }} 条历史数字记录未参与统计</summary><p>这些记录超出数字处理范围或格式不正确，原答卷仍保留，可在答卷详情中查看。</p></details>{% endif %}
   {% if result.current_definition and result.not_included_count %}<details class="statistics-notes"><summary>未包含本题的答卷：{{ result.not_included_count }} 份</summary><p>可能因条件跳转略过，或提交时尚未添加本题；不算作未填写。</p></details>{% endif %}
   {% if result.question.type == 'single_choice' %}
     <ul class="option-results">{% for option, count in result.option_counts.items() %}<li><div class="option-result-label"><span><b class="option-result-marker">{{ option_label(loop.index, option_style(survey)) }}.</b> {{ option }}</span><strong>{{ count }} 份 · {{ result.option_percentages[option] }}%</strong></div><div class="result-track"><div class="result-bar" style="width: {{ result.option_percentages[option] }}%"></div></div>{% if answer_page is defined and count %}<a class="account-result-link" href="{{ url_for('surveys.question_account_responses', survey_id=survey._id, question_id=result.question.id, version=result.question.get('version', 1), option=loop.index0, **result.account_context) }}">查看选择此项的账号 →</a>{% endif %}</li>{% endfor %}</ul>
@@ -41,7 +42,7 @@
         {% if total_answer_pages > 1 %}<nav class="statistics-pages" aria-label="原始回答分页">{% if shown_answer_page > 1 %}<a href="{{ url_for('surveys.question_statistics', survey_id=survey._id, question_id=result.question.id, answer_page=shown_answer_page - 1, version=result.question.get('version', 1), _anchor='statistics-version-' ~ result.question.get('version', 1) ~ '-' ~ result.question.id, **statistics_context) }}">← 上一页</a>{% endif %}<span>第 {{ shown_answer_page }} / {{ total_answer_pages }} 页</span>{% if shown_answer_page < total_answer_pages %}<a href="{{ url_for('surveys.question_statistics', survey_id=survey._id, question_id=result.question.id, answer_page=shown_answer_page + 1, version=result.question.get('version', 1), _anchor='statistics-version-' ~ result.question.get('version', 1) ~ '-' ~ result.question.id, **statistics_context) }}">下一页 →</a>{% endif %}</nav>{% endif %}
       </section>
     {% else %}
-      <a class="stat-detail-link" href="{{ url_for('surveys.question_statistics', survey_id=survey._id, question_id=result.question.id, **statistics_context) }}">查看全部原始回答 →</a>
+      <a class="stat-detail-link" href="{{ url_for('surveys.question_statistics', survey_id=survey._id, question_id=result.question.id, version=result.question.get('version', 1), **statistics_context) }}">查看全部原始回答 →</a>
     {% endif %}
   {% endif %}
 </section>

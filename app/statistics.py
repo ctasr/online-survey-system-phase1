@@ -1,14 +1,15 @@
 from collections import Counter
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import Decimal, ROUND_HALF_UP, localcontext
 from .numbering import question_positions
+from .questions import _finite_decimal, decimal_digit_counts
 
 
 def display_number(value):
-    try:
+    integer_digits, _ = decimal_digit_counts(value)
+    with localcontext() as context:
+        context.prec = max(28, integer_digits + 3)
         rounded = value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-        return format(rounded.normalize(), "f")
-    except InvalidOperation:
-        return str(value.normalize())
+        return numeric_label(rounded)
 
 
 def display_percent(count, total):
@@ -57,6 +58,7 @@ def summarize_responses(questions, responses, question_history=None, return_over
                 "reached_count": 0,
                 "blank_count": 0,
                 "answered_count": 0,
+                "invalid_count": 0,
                 "option_counts": {option: 0 for option in definition.get("options", [])},
                 "option_percentages": {},
                 "values": [],
@@ -117,10 +119,12 @@ def summarize_responses(questions, responses, question_history=None, return_over
                 result["values"].append(value)
             elif kind == "number":
                 try:
-                    number = Decimal(value)
-                except (InvalidOperation, TypeError):
+                    number = _finite_decimal(value, "数字回答")
+                except ValueError:
+                    result["invalid_count"] += 1
                     continue
-                if not number.is_finite():
+                if number is None:
+                    result["invalid_count"] += 1
                     continue
                 result["answered_count"] += 1
                 result["values"].append(value)
@@ -134,15 +138,19 @@ def summarize_responses(questions, responses, question_history=None, return_over
             frequencies = Counter(numbers)
             result["number_frequencies"] = [(numeric_label(value), count) for value, count in
                                            sorted(frequencies.items(), key=lambda item: (-item[1], item[0]))]
-            average = sum(numbers, Decimal(0)) / len(numbers)
             ordered = sorted(numbers)
             middle = len(ordered) // 2
-            median = ordered[middle] if len(ordered) % 2 else (ordered[middle - 1] + ordered[middle]) / 2
-            by_id[question_id].update(
-                average=display_number(average), median=display_number(median),
-                minimum=numeric_label(ordered[0]),
-                maximum=numeric_label(ordered[-1]),
-            )
+            sizes = [decimal_digit_counts(number) for number in numbers]
+            with localcontext() as context:
+                context.prec = max(28, max(size[0] for size in sizes)
+                                   + max(size[1] for size in sizes) + len(str(len(numbers))) + 4)
+                average = sum(numbers, Decimal(0)) / len(numbers)
+                median = ordered[middle] if len(ordered) % 2 else (ordered[middle - 1] + ordered[middle]) / 2
+                by_id[question_id].update(
+                    average=display_number(average), median=display_number(median),
+                    minimum=numeric_label(ordered[0]),
+                    maximum=numeric_label(ordered[-1]),
+                )
     results = [result for result in results if (result["current_definition"] and not result["historical"]) or
                (result["question"]["id"], result["question"].get("version", 1)) in used_versions]
     for result in results:

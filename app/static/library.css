@@ -74,9 +74,10 @@
 .library-stat-number{display:flex;align-items:baseline;gap:.65rem;margin:.25rem 0 1rem;color:#496078}
 .library-stat-number strong{color:#267b79;font-size:2.4rem;line-height:1}
 .library-number-overview{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.55rem;margin:0 0 1.1rem}
-.library-number-overview>div{display:flex;flex-direction:column;gap:.25rem;padding:.75rem .85rem;border:1px solid #dfe9ed;border-radius:11px;background:#f4f9f9}
+.library-number-overview>div{display:flex;flex-direction:column;min-width:0;gap:.25rem;padding:.75rem .85rem;border:1px solid #dfe9ed;border-radius:11px;background:#f4f9f9}
 .library-number-overview span{color:#597080;font-size:.87rem}
-.library-number-overview strong{color:#20546b;font-size:1.22rem}
+.library-number-overview strong{color:#20546b;font-size:1.22rem;overflow-wrap:anywhere}
+.library-detail-columns>div{min-width:0}
 .library-number-distribution{margin-bottom:.6rem}
 .library-more-distribution{margin:.4rem 0 1rem}
 .library-stat-list{padding:0!important;margin:0;list-style:none}
@@ -168,3 +169,10 @@ body:has(.library-choose-finish) .page-back-top{display:none}
 .library-section-banks .library-card{min-height:92px}
 @media(max-width:720px){.library-pagination{justify-content:center}.library-choose-finish{bottom:.6rem;padding:.7rem .8rem;gap:.6rem;font-size:.86rem}.library-choose-finish .primary-link{width:auto;text-align:center;padding:.7rem .9rem}.library-choose-finish span{min-width:0}}
 @media(max-width:720px){.library-bank-settings-body{grid-template-columns:minmax(0,1fr)}.library-bank-settings-body .library-inline-form input{box-sizing:border-box;width:100%;max-width:none}.library-bank-settings-body>form:last-child{border-left:0;border-top:1px solid #e3e9ef;padding:1rem 0 0}.library-bank-settings-body .library-delete-bank{width:100%}}
+
+.library-own-values { margin-top:1rem; }
+.library-own-values summary span { color:#62758a; font-size:.85rem; font-weight:400; }
+.library-own-values ol { padding-left:1.6rem; }
+.library-own-values li { margin:.6rem 0; line-height:1.7; white-space:pre-wrap; overflow-wrap:anywhere; }
+.library-own-values .library-pagination { margin:1rem 0 0; }
+.library-number-measures { margin-top:1rem; }

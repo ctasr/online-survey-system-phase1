@@ -31,6 +31,82 @@ class StatisticsHistoryNavigationTests(unittest.TestCase):
         cls.server.shutdown()
         library_tests.LibraryFlowTests.tearDownClass()
 
+    def test_removed_latest_version_without_answers_keeps_historical_review_usable(self):
+        owner = self.flow.app.test_client()
+        username = 'removed_history_' + uuid4().hex
+        self.flow.login(owner, username)
+        user = self.flow.db.users.find_one({'username': username})
+        survey = self.flow.survey(owner, username, '第一阶段活动反馈历史')
+        original = {'id': 'opinion', 'title': '你希望增加什么活动？', 'type': 'text',
+                    'version': 1, 'required': True}
+        removed = {**original, 'title': '你对活动安排有什么建议？', 'version': 2, 'active': False}
+        remaining = {'id': 'remaining', 'title': '活动是否有帮助？', 'type': 'text',
+                     'version': 1, 'required': True, 'active': True}
+        # Stage one allowed changing and removing published questions. Retain that legacy state.
+        self.flow.db.surveys.update_one({'_id': survey['_id']}, {'$set': {
+            'questions': [removed, remaining], 'question_history': [original], 'status': 'published'}})
+        self.flow.db.responses.insert_many([
+            {'survey_id': survey['_id'], 'survey_title': survey['title'],
+             'respondent_id': user['_id'], 'submitted_at': datetime.now(timezone.utc),
+             'answers': [{'question_id': 'opinion', 'question_version': 1,
+                          'value': f'历史建议 {index:02d}：增加晚间活动。'}]}
+            for index in range(1, 26)])
+        before_survey = self.flow.db.surveys.find_one({'_id': survey['_id']})
+        before_answers = list(self.flow.db.responses.find({'survey_id': survey['_id']}).sort('_id', 1))
+        path = f"/surveys/{survey['_id']}/statistics/opinion"
+        self.assertEqual(owner.get(path + '?version=1').status_code, 200)
+        self.assertEqual(owner.get(path).status_code, 200)
+        for width in (390, 1280):
+            with self.subTest(width=width):
+                context = self.browser.new_context(viewport={'width': width, 'height': 844})
+                cookie = self.flow.app.session_interface.get_signing_serializer(self.flow.app).dumps(
+                    {'user_id': str(user['_id'])})
+                context.add_cookies([{'name': self.flow.app.config['SESSION_COOKIE_NAME'],
+                                     'value': cookie, 'url': self.base}])
+                page = context.new_page()
+                page.set_default_timeout(6000)
+                errors = []
+                page.on('pageerror', lambda error: errors.append(str(error)))
+                try:
+                    page.goto(self.base + f"/surveys/{survey['_id']}/statistics")
+                    page.locator('.historical-statistics > summary').click()
+                    old = page.locator('#statistics-version-1-opinion')
+                    entry = old.get_by_role('link', name='查看全部原始回答 →', exact=True)
+                    self.assertEqual(parse_qs(urlsplit(entry.get_attribute('href')).query)['version'], ['1'])
+                    entry.click()
+                    self.assertEqual(page.locator('.stat-raw-answers li').count(), 20)
+                    self.assertTrue(old.is_visible())
+                    old.get_by_role('link', name='下一页 →', exact=True).click()
+                    self.assertEqual(parse_qs(urlsplit(page.url).query)['version'], ['1'])
+                    self.assertEqual(page.locator('.stat-raw-answers li').count(), 5)
+                    top_entry = page.get_by_role('link', name='查看本题的账号回答 →', exact=True)
+                    self.assertEqual(parse_qs(urlsplit(top_entry.get_attribute('href')).query)['version'], ['1'])
+                    top_entry.click()
+                    self.assertIn('第 1 版', page.locator('.eyebrow').inner_text())
+                    page.get_by_role('navigation', name='本题账号回答分页').get_by_role(
+                        'link', name='下一页 →', exact=True).click()
+                    page.get_by_role('link', name='查看答卷 →', exact=True).first.click()
+                    self.assertIn(original['title'], page.locator('.answer-review').inner_text())
+                    self.assertNotIn(removed['title'], page.locator('.answer-review').inner_text())
+                    page.get_by_role('link', name='← 本题账号回答', exact=True).click()
+                    self.assertEqual(parse_qs(urlsplit(page.url).query)['page'], ['2'])
+                    self.assertEqual(page.locator('.account-responses-table tbody tr').count(), 5)
+                    page.get_by_role('link', name='← 返回单题统计', exact=True).click()
+                    returned = parse_qs(urlsplit(page.url).query)
+                    self.assertEqual(returned['version'], ['1'])
+                    self.assertEqual(returned['answer_page'], ['2'])
+                    self.assertEqual(old.locator('.stat-raw-answers li').count(), 5)
+                    self.assertTrue(old.is_visible())
+                    self.assertFalse(page.evaluate('document.documentElement.scrollWidth > innerWidth'))
+                    self.assertFalse(errors, errors)
+                finally:
+                    context.close()
+        for version in (2, 99):
+            self.assertEqual(owner.get(path + f'?version={version}').status_code, 404)
+        self.assertEqual(self.flow.db.surveys.find_one({'_id': survey['_id']}), before_survey)
+        self.assertEqual(list(self.flow.db.responses.find({'survey_id': survey['_id']}).sort('_id', 1)),
+                         before_answers)
+
     def test_history_pagination_and_account_return_keep_selected_version(self):
         owner = self.flow.app.test_client()
         username = 'history_pages_' + uuid4().hex

@@ -451,12 +451,12 @@ if (surveyFlow) {
     try {
       const response = await fetch(surveyFlow.dataset.assessUrl, { method: "POST", body: new FormData(surveyFlow) });
       const result = await response.json();
+      if (version !== requestVersion) return null;
       if (!response.ok) {
         error.textContent = result.error || "无法检查答卷，请稍后重试。";
         if (response.status === 401) window.location.href = "/login";
         return null;
       }
-      if (version !== requestVersion) return null;
       updateOverview(result);
       if (showValidation) {
         clearErrors();
@@ -469,6 +469,7 @@ if (surveyFlow) {
       }
       return result;
     } catch {
+      if (version !== requestVersion) return null;
       error.textContent = "连接失败，请稍后重试。";
       return null;
     }
@@ -553,6 +554,7 @@ if (surveyFlow) {
       updateClearChoice();
     }
     const changed = () => {
+      requestVersion++;
       field.querySelector("[data-question-error]").textContent = "";
       field.removeAttribute("aria-invalid");
       clearTimeout(timer);
@@ -630,6 +632,9 @@ if (jumpForm) {
   const error = jumpForm.querySelector("[data-jump-error]");
   const targetSearch = jumpForm.querySelector('[data-jump-target-search]');
   if (targetSearch) {
+    targetSearch.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' && !event.isComposing) event.preventDefault();
+    });
     const targets = [...jumpForm.querySelectorAll('[data-jump-target-grid] .jump-target')];
     const empty = jumpForm.querySelector('[data-jump-target-empty]');
     targetSearch.addEventListener('input', () => {

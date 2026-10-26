@@ -209,6 +209,10 @@ class LifecycleExperienceTests(unittest.TestCase):
             with self.subTest(width=width):
                 owner, user, survey = self.jump_scenario()
                 sid = survey['_id']
+                # A long questionnaire exposes the target search inside the save form.
+                self.flow.db.surveys.update_one({'_id': sid}, {'$push': {'questions': {'$each': [
+                    {'id': f'extra-{i}', 'type': 'text', 'title': f'阅读补充反馈 {i}',
+                     'required': False, 'active': True, 'version': 1} for i in range(12)]}}})
                 path = f'/surveys/{sid}/questions/start/jumps/new'
                 context = self.browser.new_context(viewport={'width': width, 'height': 900})
                 cookie = self.flow.app.session_interface.get_signing_serializer(self.flow.app).dumps({'user_id': str(user['_id'])})
@@ -217,6 +221,30 @@ class LifecycleExperienceTests(unittest.TestCase):
                 errors = []
                 page.on('pageerror', lambda error: errors.append(str(error)))
                 try:
+                    page.goto(self.base + path)
+                    page.locator('[name=operator]').select_option('gt')
+                    page.locator('[name=threshold]').fill('3.5')
+                    page.locator('[name=target_id][value=last]').check()
+                    posts = []
+                    page.on('request', lambda r: posts.append(r.url) if r.method == 'POST' else None)
+                    search = page.locator('[data-jump-target-search]')
+                    search.fill('补充意见')
+                    search.press('Enter')
+                    page.wait_for_timeout(250)
+                    self.assertEqual(posts, [], 'Searching must not save a pending jump rule.')
+                    self.assertEqual(len(self.flow.db.surveys.find_one({'_id': sid})['questions'][0]['jumps']), 2)
+                    dialogs = []
+                    def stay_on_page(dialog):
+                        dialogs.append(dialog.type)
+                        dialog.dismiss()
+                    page.on('dialog', stay_on_page)
+                    page.locator('.site-brand').click()
+                    self.assertEqual(dialogs, ['beforeunload'])
+                    self.assertEqual(page.url, self.base + path)
+                    self.assertEqual(page.locator('[name=threshold]').input_value(), '3.5')
+                    page.locator('.jump-save a').click()
+                    page.wait_for_url(f'{self.base}/surveys/{sid}#question-start')
+                    self.assertEqual(len(dialogs), 1, 'Explicit cancel must return without another prompt.')
                     page.goto(self.base + path)
                     page.locator('[name=operator]').select_option('gt')
                     page.locator('[name=threshold]').fill('3.5')

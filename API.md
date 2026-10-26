@@ -45,19 +45,33 @@ API 使用与网页相同的登录会话 Cookie。先 `GET /api/v1/csrf`，保�
 
 创建问卷的 JSON 字段为 `title`、`description`、`allow_anonymous`、`allow_multiple_submissions`、`option_label_style`（`numeric` 或 `letters`）和 `deadline`（可选，北京时间 `YYYY-MM-DDTHH:MM`）。创建返回 201、问卷 `id`、`slug`、`public_path`、`public_url`、`revision`。未设置 `PUBLIC_BASE_URL` 时，`public_url` 为 `null`，`share_ready` 为 `false`；`public_path` 仍可用于本站内导航。后续修改可带读取到的 `revision`，旧版本返回 409。问卷说明等字段可通过 PATCH 调整，截止时间设为 `null` 表示不设截止时间。
 
+创建、查看和修改问卷的响应均包在 `survey` 对象中，上述问卷字段应从 `response["survey"]` 读取。例如，未配置公开地址时，创建成功的响应包含：
+
+```json
+{"survey":{"id":"507f1f77bcf86cd799439011","slug":"Ab12Cd","revision":1,"public_path":"/survey/Ab12Cd","public_url":null,"share_ready":false}}
+```
+
+新增问卷题目返回 `{"question": {...}, "revision": ...}`。创建独立题目、创建新版本和恢复版本返回 `{"question": {...}}`。创建题库直接返回顶层 `id` 和 `name`，与题目响应结构不同。
+
 字段格式和问卷状态检查通过后，PATCH中提交的设置与当前值相同时返回200，不改变revision、updated_at或其他字段，不会使已加载问卷的填写者失效；实际有变化时才更新版本。截止时间按北京时间输入、与已保存的UTC时间比较。
 
 删除问卷会同时删除该问卷的正式答卷和所有账号的未提交暂存；不删除其他问卷的数据，也不删除独立题目库中的来源版本。
 
-添加题目的 `type` 支持 `single_choice`、`multiple_choice`、`text`、`number`。`required` 是布尔值。选择题 `options` 是不重复的文字数组；多选可使用 `min_select` / `max_select`，或单独使用 `exact_select`；文本题可使用 `min_length` / `max_length`；数字题可使用 `min_value` / `max_value` / `integer_only`。数字题还可设置 `number_statistics`：`distribution`（默认，页面以答案及回答份数为主）或 `measure`（页面直接展示均值等）。两种模式的统计 API 都返回 `number_frequencies`、`average`、`median`、`minimum`、`maximum`；数值等价的写法（如 `30`、`30.0`、`3e1`）在分布中合并，`values` 仍保留原始填写内容；模式只影响页面的展示重点，不会改变已存答卷。题目约束与网页相同。
+添加题目的 `type` 支持 `single_choice`、`multiple_choice`、`text`、`number`。`required` 是布尔值。选择题 `options` 是不重复的文字数组；多选可使用 `min_select` / `max_select`，或单独使用 `exact_select`；文本题可使用 `min_length` / `max_length`；数字题可使用 `min_value` / `max_value` / `integer_only`。数字题还可设置 `number_statistics`：`distribution`（默认，页面以答案及回答份数为主）或 `measure`（页面直接展示均值等）。两种模式的统计 API 都返回 `number_frequencies`、`average`、`median`、`minimum`、`maximum`；数值等价的写法（如 `30`、`30.0`、`3e1`）在分布中合并，`values` 仍保留原始填写内容；模式只影响页面的展示重点，不会改变已存答卷。题目约束与网页相同。数字上下限、跳转阈值及答案统一限制原始输入最多2050字符，展开后的整数与有效小数部分各最多1000位，超限返回422。无意义末尾零不增加有效小数位数。统计按实际位数计算，避免大数正负相消时丢失精度。
 
-第二阶段的题目库创建及新版本请求沿用上述题目字段。题目版本返回 `id`、`root_id`、`parent_id`、`owner_id`、`version`、`shared` 和 `definition`。新版本内容与来源相同时返回 422，不创建重复版本；显式恢复操作仍创建新版本。版本一经创建不原位修改；新版本按同一 `root_id` 递增，`parent_id` 指向所依据的版本。`restore` 同样创建新版本，历史版和已经发布的问卷保持原样。共享请求为 `{"shared": true}` 或 `false`；共享以单个版本为单位，其他用户只能读取和使用仍共享的版本。个人题库创建或改名用 `{"name":"常用题"}`，加入条目用 `{"question_id":"版本ID"}`；题库更新版本不会自动更新问卷。题库条目的 PATCH 可传 `{"target_id":"确认过的版本ID"}`，只更新到该指定版本；省略时明确表示更新到最新可用版本。目标必须属于同一道题，且仍归本人所有或处于共享状态。旧版停止共享后，仍可将已经收录的条目替换为可用新版；并发变更会保留其他条目，冲突无法解决时返回 409，不假报成功。向草稿问卷加入版本也用 `question_id`，可同时提交已读取的 `revision`；版本不一致返回 409，成功返回新的问卷内题目 ID。发布后新增、修改、删除题目或跳转规则返回 409，问卷信息的允许修改范围不变。
+第二阶段的题目库创建及新版本请求沿用上述题目字段。题目版本返回 `id`、`root_id`、`parent_id`、`owner_id`、`version`、`shared` 和 `definition`。新版本内容与来源相同时返回 422，不创建重复版本；显式恢复操作仍创建新版本。版本一经创建不原位修改；新版本按同一 `root_id` 递增，`parent_id` 指向所依据的版本。`restore` 同样创建新版本，历史版和已经发布的问卷保持原样。
+
+共享请求为 `{"shared": true}` 或 `false`，以单个版本为单位。其他用户只能新选用仍共享的版本。停止共享后，已在本人问卷中使用过的版本仍可查看详情和统计，但不能再加入新的问卷或题库。
+
+个人题库创建或改名用 `{"name":"常用题"}`，加入条目用 `{"question_id":"版本ID"}`；题库更新版本不会自动更新问卷。题库条目的 PATCH 可传 `{"target_id":"确认过的版本ID"}`，只更新到该指定版本；省略时明确表示更新到最新可用版本。目标必须属于同一道题，且仍归本人所有或处于共享状态。旧版停止共享后，仍可将已经收录的条目替换为可用新版；并发变更会保留其他条目，冲突无法解决时返回 409，不假报成功。
+
+向草稿问卷加入版本也用 `question_id`，可同时提交已读取的 `revision`；版本不一致返回 409，成功返回新的问卷内题目 ID。发布后新增、修改、删除题目或跳转规则返回 409，问卷信息的允许修改范围不变。
 
 题库加题、改名、移除操作在写入时再次检查题库是否存在；请求途中题库被删除时返回404和JSON错误，不返回成功。
 
 保存现有问卷题目到题目库时，会核对读取时的问卷版本、状态和题目仍有效；操作期间如有其他页面修改或保存，返回409和原因，不给新内容关联旧来源，也不保留该失败操作临时创建的题目。确认当前内容后可以重试。
 
-跨问卷统计以**同一个题目版本**为单位，读取所有引用该版本的问卷和已提交答卷，返回 `survey_count`、`answered_count`、`option_counts`、`values`、`values_scope`、`average`。`usages` 列出使用此版本的问卷：自己的问卷返回 `id`、`title`、`status` 和 `own:true`；他人的问卷仅返回稳定的匿名 `reference` 和 `own:false`，不开放标题或详情。数字题还返回 `median`、`minimum`、`maximum` 和 `number_distribution`，后者按等价数值归并（例如 `30` 与 `30.0`），列出数值、回答份数和比例。回答次数、选项计数及数字分布汇总所有问卷；`values_scope` 为 `own_surveys`，逐条填写内容 `values` 只来自当前用户自己创建的问卷。不同版本的选项和约束可能不同，`scope=lineage` 返回逐版本概览，不把答案强行混算。向同一份草稿重复加入同一题目版本返回 409。
+跨问卷统计以**同一个题目版本**为单位，读取所有引用该版本的问卷和已提交答卷，返回 `survey_count`、`answered_count`、`option_counts`、`values`、`values_scope`、`average`。`usages` 列出使用此版本的问卷：自己的问卷返回 `id`、`title`、`status` 和 `own:true`；他人的问卷仅返回稳定的匿名 `reference` 和 `own:false`，不开放标题或详情。数字题还返回 `median`、`minimum`、`maximum` 和 `number_distribution`，后者按等价数值归并（例如 `30` 与 `30.0`），列出数值、回答份数和比例。回答次数、选项计数及数字分布汇总所有问卷；`values_scope` 为 `own_surveys`，逐条填写内容 `values` 只来自当前用户自己创建的问卷，按提交时间升序、相同时间按答卷ID升序返回。网页将这些内容按每页20条显示，`values_page`只用于网页翻页，JSON接口仍返回完整的本人问卷有效填写内容。历史异常数字不参与数值计算，`invalid_count`说明数量，数据库原文及答卷详情保留。不同版本的选项和约束可能不同，`scope=lineage` 返回逐版本概览，不把答案强行混算。向同一份草稿重复加入同一题目版本返回 409。
 
 跳转规则的 JSON 包含后续题目的 `target_id`。单选题加 `option`；多选题加 `mode`（`any`、`all`、`exact`）及 `match_options` 数组；数字题加 `operator`（`lt`、`lte`、`eq`、`gte`、`gt`）及 `threshold`。规则按顺序匹配，第一条命中生效；PATCH 规则时用 `{"direction":"up"}` 或 `{"direction":"down"}` 调整顺序。
 
@@ -154,9 +168,11 @@ print(status, surveys)
 
 ### 截止时间的校验和保存
 
-截止设置的错误留在展开面板中，保留日期和时间；旧表单及最终写入冲突不覆盖另一页面修改，页面保留输入并带上最新revision，供用户确认后重试。问卷关闭后拒绝旧页面的截止修改。过期截止时间未修改内容的保存视为无改动，不增加revision或updated_at；新建或真正修改时仍要求未来时间。网页和JSON保持相同规则。
+截止设置的错误留在展开面板中，保留日期和时间；旧表单及最终写入冲突不覆盖另一页面修改，页面保留输入并带上最新revision，供用户确认后重试。问卷关闭后拒绝旧页面的截止修改。原截止时间即使已过期，只要没有改动，保存仍按无改动处理，不增加revision或updated_at；新建或真正修改时仍要求未来时间。网页和JSON保持相同规则。
 
 
 ### 旧页面保存和同时修改
 
 发布、关闭和删除核对表单revision及状态，并在最终写入时再次匹配；冲突返回409并展示最新内容，重复已完成操作不重写时间。删题、删除或调整跳转规则也核对旧表单；无revision的第一阶段旧文档使用与服务器一致的默认版本。跳转校验错误返回422，保留条件和目标题目；发生冲突时保留仍可编辑的输入，供用户确认后重试。题库改名比对原名，冲突保留拟定名称，写入未匹配时返回失败。JSON删除同样核对最终状态，题库改名最终冲突返回409。
+
+题目新版本遇到并发编号冲突时，JSON API仍返回409。网页也返回409，并保留当前输入，提示直接重试保存；不会自动覆盖另一页版本，也不要求刷新而丢失表单。

@@ -1,6 +1,8 @@
 import os
 import re
 import unittest
+from copy import deepcopy
+from decimal import Decimal
 from uuid import uuid4
 
 from app import create_app
@@ -94,6 +96,101 @@ class StatisticsTests(unittest.TestCase):
         })
         self.post(client, "/login", {"username": name, "password": "123456"})
         return client
+
+    def test_extreme_numeric_inputs_are_rejected_and_statistics_remain_exact(self):
+        from werkzeug.datastructures import MultiDict
+        from app.questions import _finite_decimal, build_question, validate_answer
+        from app.jumps import build_jump_rule, jump_warnings
+        from app.statistics import display_number
+
+        question = {"id": "quantity", "type": "number", "title": "本次数值",
+                    "required": True, "number_statistics": "measure"}
+        def summarize(values):
+            return summarize_responses([question], [
+                {"answers": [{"question_id": "quantity", "value": value}]} for value in values])[0]
+
+        with self.subTest(scenario="cancellation"):
+            self.assertEqual(summarize(["1e28", "1", "-1e28"])["average"], "0.33")
+        with self.subTest(scenario="large_even_median"):
+            base = 10 ** 40
+            result = summarize([str(base + 1), str(base + 3)])
+            self.assertEqual(result["median"], str(base + 2))
+            self.assertEqual(result["average"], str(base + 2))
+            self.assertEqual(display_number(Decimal(str(base) + ".125")), str(base) + ".13")
+        with self.subTest(scenario="supported_precision_boundaries"):
+            self.assertEqual(_finite_decimal("1e999", "数值"), Decimal("1e999"))
+            self.assertEqual(_finite_decimal("1e-1000", "数值"), Decimal("1e-1000"))
+            result = summarize(["1e999", "1", "-1e999"])
+            self.assertEqual(result["average"], "0.33")
+            self.assertEqual(summarize(["0e1000000", "0e-1000000"])["average"], "0")
+            self.assertEqual(validate_answer(question, MultiDict({"q_quantity": "30.00"})), "30.00")
+
+        extreme_values = ("1e1000", "1e1000000", "1e-1001", "1e-1000000", "9" * 2051)
+        for value in extreme_values:
+            with self.subTest(scenario="validation", value=value[:20]):
+                with self.assertRaises(ValueError):
+                    validate_answer(question, MultiDict({"q_quantity": value}))
+                for field in ("min_value", "max_value"):
+                    with self.assertRaises(ValueError):
+                        build_question(MultiDict({"type": "number", "title": "边界", field: value}))
+                with self.assertRaises(ValueError):
+                    build_jump_rule([question, {"id": "next", "type": "text"}], 0,
+                                    MultiDict({"target_id": "next", "operator": "gte", "threshold": value}))
+
+        with self.subTest(scenario="legacy_values_do_not_break_statistics"):
+            values = ["10", "20", "1e1000000", "1e-1000000", "NaN", {"bad": "shape"}]
+            original = deepcopy(values)
+            result = summarize(values)
+            self.assertEqual(result["average"], "15")
+            self.assertEqual(result["answered_count"], 2)
+            self.assertEqual(result["invalid_count"], 4)
+            self.assertEqual(values, original)
+            warnings = jump_warnings([{**question, "integer_only": True, "jumps": [
+                {"id": "bad", "kind": "number", "operator": "gte", "threshold": "1e1000000",
+                 "target_id": "next"}]}, {"id": "next", "type": "text"}])
+            self.assertTrue(warnings["quantity"])
+
+        owner = self.sign_in()
+        def api(method, path, data):
+            token = owner.get("/api/v1/csrf").get_json()["csrf_token"]
+            return owner.open(path, method=method, json=data, headers={"X-CSRF-Token": token})
+        created = api("POST", "/api/v1/surveys", {"title": "精确数字统计核对"})
+        self.assertEqual(created.status_code, 201)
+        survey_id = created.get_json()["survey"]["id"]
+        for field in ("min_value", "max_value"):
+            invalid = api("POST", f"/api/v1/surveys/{survey_id}/questions",
+                          {"type": "number", "title": "边界", field: "1e1000000"})
+            self.assertEqual(invalid.status_code, 422)
+        added = api("POST", f"/api/v1/surveys/{survey_id}/questions",
+                    {"type": "number", "title": "数值", "required": True, "number_statistics": "measure"})
+        self.assertEqual(added.status_code, 201)
+        question_id = added.get_json()["question"]["id"]
+        next_question = api("POST", f"/api/v1/surveys/{survey_id}/questions",
+                            {"type": "text", "title": "补充说明"}).get_json()["question"]["id"]
+        invalid_jump = api("POST", f"/api/v1/surveys/{survey_id}/questions/{question_id}/jumps",
+                           {"operator": "gt", "threshold": "1e1000000", "target_id": next_question})
+        self.assertEqual(invalid_jump.status_code, 422)
+        self.assertEqual(api("POST", f"/api/v1/surveys/{survey_id}/publish", {}).status_code, 200)
+        survey = self.db.surveys.find_one({"title": "精确数字统计核对"})
+        for value in extreme_values:
+            rejected = api("POST", f"/api/v1/public/surveys/{survey['slug']}/responses",
+                           {"revision": survey["revision"], "answers": {question_id: value}})
+            self.assertEqual(rejected.status_code, 422, rejected.get_json())
+        self.assertEqual(self.db.responses.count_documents({"survey_id": survey["_id"]}), 0)
+        for value in ("1e28", "1", "-1e28"):
+            accepted = api("POST", f"/api/v1/public/surveys/{survey['slug']}/responses",
+                           {"revision": survey["revision"], "answers": {question_id: value}})
+            self.assertEqual(accepted.status_code, 201, accepted.get_json())
+        # Historical malformed data remains stored, but does not take the statistics page down.
+        self.db.responses.insert_one({"survey_id": survey["_id"], "respondent_id": None,
+            "answers": [{"question_id": question_id, "question_version": 1, "value": "1e1000000"}]})
+        before = list(self.db.responses.find({"survey_id": survey["_id"]}).sort("_id", 1))
+        response = owner.get(f"/api/v1/surveys/{survey_id}/statistics/{question_id}")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["results"][0]["average"], "0.33")
+        self.assertEqual(response.get_json()["results"][0]["invalid_count"], 1)
+        self.assertEqual(owner.get(f"/surveys/{survey_id}/statistics/{question_id}").status_code, 200)
+        self.assertEqual(list(self.db.responses.find({"survey_id": survey["_id"]}).sort("_id", 1)), before)
 
     def test_many_questions_show_statistics_in_pages_without_duplicate_title_index(self):
         owner = self.sign_in()
@@ -207,6 +304,11 @@ class StatisticsTests(unittest.TestCase):
         self.assertIn("<span>最小值</span><strong>1</strong>", whole)
         self.assertIn("<span>最大值</span><strong>2</strong>", whole)
         self.assertNotIn("填写路径分布", whole)
+        overview = owner.get(stats_path + "?view=table").get_data(as_text=True)
+        self.assertIn('<span class="statistics-answer-count">3 份</span>', overview)
+        self.assertIn('<span class="statistics-answer-count">2 份</span>', overview)
+        self.assertIn('<small class="statistics-blank-note">选答未填 1 份</small>', overview)
+        self.assertNotRegex(overview, r'data-label="已回答">\s*\d+\s*/')
 
         for index, expected_count in [(0, 3), (1, 2), (2, 2), (3, 3)]:
             page = owner.get(stats_path + "/" + questions[index]["id"])

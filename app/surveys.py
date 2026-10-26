@@ -19,7 +19,7 @@ from .auth import login_required
 from .db import get_db
 from .jumps import MULTI_MODES, NUMBER_OPERATORS, build_jump_rule, jump_warnings, next_question_index
 from .numbering import option_style, question_positions
-from .questions import QUESTION_TYPES, build_question, validate_answer
+from .questions import QUESTION_TYPES, build_question, definition_content, validate_answer
 from .security import valid_csrf
 from .sharing import survey_link
 from .statistics import display_percent, summarize_responses, survey_overview
@@ -812,7 +812,7 @@ def edit_question(survey_id, question_id):
             "_id": original.get("library_question_id"), "owner_id": g.user["_id"]})
         context = {"from_survey": survey_id, "from_question": question_id}
         message = "问卷已发布，不能再修改其中的题目。本次输入已保留，尚未保存。" if request.method == "POST" else "问卷已发布，不能再修改其中的题目。"
-        message += "可另存为题库新版本，原问卷不受影响。" if source else "可另存到题目库，原问卷不受影响。"
+        message += "可另存为题目新版本，原问卷不受影响。" if source else "可另存到题目库，原问卷不受影响。"
         return render_template("library/form.html", source=source,
                                form=request.form if request.method == "POST" else question_form_values(original),
                                error=message, question_types=QUESTION_TYPES, context_args=context,
@@ -838,11 +838,8 @@ def edit_question(survey_id, question_id):
             error = str(problem)
         else:
             try:
-                old_content = {key: value for key, value in original.items()
-                               if key not in ("id", "version", "active", "jumps", "library_question_id", "library_root_id", "library_version", "library_source_question_version")}
-                new_content = {key: value for key, value in replacement.items() if key != "id"}
-                if original["type"] == "number":
-                    old_content.setdefault("number_statistics", "distribution")
+                old_content = definition_content(original)
+                new_content = definition_content(replacement)
                 option_style_changed = option_label_style != option_style(survey)
                 if new_content == old_content and not option_style_changed:
                     flash("题目内容没有变化。", "success")
@@ -888,7 +885,7 @@ def edit_question(survey_id, question_id):
                 context = {"from_survey": survey_id, "from_question": question_id} if latest else {}
                 return render_template("library/form.html", source=source, form=request.form,
                     error="原问卷或题目已发生变化，本次输入已保留，尚未保存。"
-                          + ("可另存为题库新版本，原问卷不受影响。" if source else "可另存到题目库，原问卷不受影响。"),
+                          + ("可另存为题目新版本，原问卷不受影响。" if source else "可另存到题目库，原问卷不受影响。"),
                     question_types=QUESTION_TYPES, context_args=context,
                     preview_option_style=option_label_style,
                     form_action=url_for("bank.new_version", question_id=source["_id"], **context)
@@ -1197,6 +1194,8 @@ def statistics(survey_id):
                 item["compact_summary"] = f"最常见回答 {value} · {count} 份"
         elif kind == "text" and item["answered_count"]:
             item["compact_summary"] = f"{item['distinct_count']} 种回答"
+        elif kind == "number" and item.get("invalid_count"):
+            item["compact_summary"] = f"{item['invalid_count']} 条历史数字未参与统计"
         else:
             item["compact_summary"] = "暂无回答"
     page_size = 25 if view == "table" else 10
@@ -1233,24 +1232,31 @@ def question_statistics(survey_id, question_id):
     results, overview = summarize_responses(survey.get("questions", []), responses,
                                             survey.get("question_history", []), return_overview=True)
     results = [item for item in results if item["question"]["id"] == question_id]
+    if not results:
+        abort(404)
     answer_page = max(1, request.args.get("answer_page", 1, type=int) or 1)
     current_question = next(q for q in survey["questions"] if q["id"] == question_id)
-    selected_version = request.args.get("version", current_question.get("version", 1), type=int)
-    if selected_version not in {item["question"].get("version", 1) for item in results}:
+    versions = {item["question"].get("version", 1) for item in results}
+    default_version = current_question.get("version", 1)
+    if default_version not in versions:
+        default_version = max(versions)
+    selected_version = request.args.get("version", type=int) if "version" in request.args else default_version
+    if selected_version not in versions:
         abort(404)
     navigation = statistics_navigation()
     for item in results:
         version_page = answer_page if selected_version == item["question"].get("version", 1) else 1
         total_pages = max(1, (len(item.get("values", [])) + 19) // 20)
         item["account_context"] = {**navigation, "stats_answer_page": min(version_page, total_pages)}
-    current_account_context = next(item["account_context"] for item in results
-                                   if item["question"].get("version", 1) == current_question.get("version", 1))
+    selected_result = next(item for item in results
+                           if item["question"].get("version", 1) == selected_version)
     return render_template(
         "surveys/question_statistics.html", survey=survey, results=results,
         response_count=overview["response_count"], answer_page=answer_page,
         current_question=current_question, selected_version=selected_version,
         display_percent=display_percent, statistics_context=navigation,
-        current_account_context=current_account_context,
+        selected_account_context=selected_result["account_context"],
+        selected_historical=selected_result["historical"],
         statistics_back_url=statistics_overview_url(survey_id, statistics_navigation()),
         text_answer_key=text_answer_key,
     )

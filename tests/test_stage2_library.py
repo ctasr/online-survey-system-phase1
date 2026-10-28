@@ -252,6 +252,61 @@ class LibraryFlowTests(unittest.TestCase):
                         self.assertEqual(result.headers['Location'], f"/surveys/{survey['_id']}#question-{question['id']}")
                         self.assertIn("本次未入库", owner.get(result.headers['Location']).get_data(as_text=True))
 
+    def test_saving_another_draft_question_cannot_overwrite_new_library_source(self):
+        owner = self.app.test_client()
+        name = "source_write_race_" + uuid4().hex
+        self.login(owner, name)
+        collection_class = type(self.db.surveys)
+        real_update = collection_class.update_one
+
+        for channel in ("web", "api"):
+            with self.subTest(channel=channel):
+                survey = self.survey(owner, name, "入库与另一题同时保存_" + channel)
+                questions = [self.api(owner, "POST", f"/api/v1/surveys/{survey['_id']}/questions", {
+                    "type": "text", "title": title, "required": True,
+                }).get_json()["question"] for title in ("图书馆服务建议", "校园出行建议")]
+                before = self.db.surveys.find_one({"_id": survey["_id"]})
+                linked_items = []
+
+                def link_before_array_write(collection, query, update, *args, **kwargs):
+                    if (collection.name == "surveys" and "questions" in update.get("$set", {})
+                            and not linked_items):
+                        from app.question_bank import save_survey_question
+                        current = self.db.surveys.find_one({"_id": survey["_id"]})
+                        linked_items.append(save_survey_question(current, current["questions"][0]))
+                    return real_update(collection, query, update, *args, **kwargs)
+
+                def edit_other_question():
+                    if channel == "api":
+                        return self.api(owner, "PATCH",
+                            f"/api/v1/surveys/{survey['_id']}/questions/{questions[1]['id']}",
+                            {"title": "校园出行还有哪些建议？"})
+                    return self.post(owner,
+                        f"/surveys/{survey['_id']}/questions/{questions[1]['id']}/edit", {
+                            "type": "text", "title": "校园出行还有哪些建议？", "required": "on",
+                        })
+
+                with patch.object(collection_class, "update_one", new=link_before_array_write):
+                    result = edit_other_question()
+                self.assertEqual(len(linked_items), 1)
+                after = self.db.surveys.find_one({"_id": survey["_id"]})
+                self.assertEqual(after["questions"][0].get("library_question_id"), linked_items[0]["_id"],
+                                 "A concurrent question save must not erase the new library source.")
+                self.assertEqual(after["revision"], before["revision"] + 1)
+                self.assertEqual(after["questions"][1]["title"], "校园出行建议")
+                self.assertEqual(result.status_code, 409)
+                if channel == "web":
+                    self.assertIn('value="校园出行还有哪些建议？"', result.get_data(as_text=True))
+
+                retried = edit_other_question()
+                self.assertEqual(retried.status_code, 200 if channel == "api" else 302)
+                latest = self.db.surveys.find_one({"_id": survey["_id"]})
+                self.assertEqual(latest["questions"][0]["library_question_id"], linked_items[0]["_id"])
+                self.assertEqual(latest["questions"][1]["title"], "校园出行还有哪些建议？")
+                self.assertEqual(owner.get(
+                    f"/api/v1/library/questions/{linked_items[0]['_id']}/statistics"
+                ).get_json()["survey_count"], 1)
+
     def test_withdrawn_shared_question_during_bank_add_preserves_selection(self):
         maker, colleague = self.app.test_client(), self.app.test_client()
         self.login(maker, "bank_maker_" + uuid4().hex)

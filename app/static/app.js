@@ -281,6 +281,7 @@ if (surveyFlow) {
     clearTimeout(draftTimer);
     const savingRevision = draftRevision;
     let trackedSave;
+    const isLatestSave = () => savingRevision === draftRevision && draftSaving === trackedSave;
     setDraftState('正在暂存…');
     try {
       const request = draftSaveQueue.then(() => fetch(draftUrl, {
@@ -294,15 +295,15 @@ if (surveyFlow) {
       const response = await request;
       if (!response.ok) {
         const problem = await response.json().catch(() => ({}));
-        setDraftState(problem.error || '暂存失败，请稍后重试', true);
+        if (isLatestSave()) setDraftState(problem.error || '暂存失败，请稍后重试', true);
         return false;
       }
-      if (savingRevision === draftRevision) {
+      if (isLatestSave()) {
         setDraftState('答案已暂存，可稍后继续填写');
         surveyFlow.dataset.draftDirty = 'false';
       }
       return true;
-    } catch { setDraftState('暂存失败，请检查连接', true); return false; }
+    } catch { if (isLatestSave()) setDraftState('暂存失败，请检查连接', true); return false; }
     finally { if (draftSaving === trackedSave) draftSaving = null; }
   }
   function restoreDraft() {

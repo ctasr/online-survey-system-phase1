@@ -419,16 +419,20 @@ def save_survey_question(survey, question):
     if question.get("library_question_id"):
         return get_db().question_library.find_one({"_id": question["library_question_id"]})
     item = make_version(None, MultiDict(form_values(question)))
+    changes = {"$set": {"questions.$.library_question_id": item["_id"],
+                        "questions.$.library_root_id": item["root_id"],
+                        "questions.$.library_version": item["version"],
+                        "questions.$.library_source_question_version": question.get("version", 1)}}
+    if survey["status"] == "draft":
+        # Draft editors replace the question array, so linking must invalidate their stale writes.
+        changes["$inc"] = {"revision": 1}
     result = get_db().surveys.update_one(
         {"_id": survey["_id"], "owner_id": g.user["_id"],
          "status": survey["status"],
          "revision": survey["revision"] if "revision" in survey else {"$exists": False},
          "questions": {"$elemMatch": {"id": question["id"], "active": {"$ne": False},
                                       "library_question_id": {"$exists": False}}}},
-        {"$set": {"questions.$.library_question_id": item["_id"],
-                  "questions.$.library_root_id": item["root_id"],
-                  "questions.$.library_version": item["version"],
-                  "questions.$.library_source_question_version": question.get("version", 1)}})
+        changes)
     if not result.modified_count:
         get_db().question_library.delete_one({"_id": item["_id"]})
         abort(409, description="题目已在其他页面修改或保存，本次未入库。请核对当前题目后重试。")

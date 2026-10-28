@@ -2,9 +2,12 @@
 import threading
 import unittest
 import sys
+import json
 from pathlib import Path
 from uuid import uuid4
+from unittest.mock import patch
 
+from flask import Response, jsonify
 from playwright.sync_api import sync_playwright
 from werkzeug.serving import make_server
 
@@ -73,6 +76,82 @@ class DraftExperienceTests(unittest.TestCase):
     def capture(self, filename):
         output = Path(__file__).resolve().parents[1] / 'output' / '第二阶段_页面检查'
         self.page.screenshot(path=str(output / filename), full_page=True)
+
+    def test_late_autosave_error_body_does_not_overwrite_latest_save_status(self):
+        # The first HTTP error sends its headers promptly but delays its JSON body.
+        # The second save must remain usable while that body is still being read.
+        self.page.add_init_script("""
+          window.finishedOlderDraftErrors = 0;
+          const readJSON = Response.prototype.json;
+          Response.prototype.json = function (...args) {
+            return readJSON.apply(this, args).then(data => {
+              if (data?.error === '先前那次暂存失败') {
+                setTimeout(() => { window.finishedOlderDraftErrors++; }, 0);
+              }
+              return data;
+            });
+          };
+        """)
+        original_view = self.flow.app.view_functions['surveys.response_draft']
+        for latest_status in (200, 503):
+            with self.subTest(latest_status=latest_status):
+                release_body = threading.Event()
+                calls = []
+                old_body = json.dumps({'error': '先前那次暂存失败'}, ensure_ascii=False).encode('utf-8')
+
+                def delayed_view(slug):
+                    from flask import request
+                    if request.method != 'POST':
+                        return original_view(slug)
+                    calls.append(request.get_json())
+                    if len(calls) == 1:
+                        def body():
+                            yield old_body[:10]
+                            release_body.wait(15)
+                            yield old_body[10:]
+                        return Response(body(), status=500, mimetype='application/json')
+                    if len(calls) == 2 and latest_status != 200:
+                        return jsonify(error='最新这次暂存失败，请重试。'), latest_status
+                    return original_view(slug)
+
+                try:
+                    with patch.dict(self.flow.app.view_functions, {'surveys.response_draft': delayed_view}):
+                        self.page.goto(self.public_url)
+                        self.page.wait_for_function(
+                            "document.querySelector('[data-draft-state]').textContent !== '正在恢复上次答案…'")
+                        baseline = self.draft()
+                        with self.page.expect_response(
+                                lambda response: response.request.method == 'POST'
+                                and response.url.endswith(self.draft_path) and response.status == 500):
+                            self.field(0).fill(f'第一次输入 {latest_status}')
+                        newest = f'后来修改的期待 {latest_status}'
+                        with self.page.expect_response(
+                                lambda response: response.request.method == 'POST'
+                                and response.url.endswith(self.draft_path) and response.status == latest_status):
+                            self.field(0).fill(newest)
+                        state = self.page.locator('[data-draft-state]')
+                        if latest_status == 200:
+                            self.wait_saved()
+                            self.assertEqual(self.draft()['answers']['q_' + self.question_ids[0]], newest)
+                        else:
+                            state.filter(has_text='最新这次暂存失败，请重试。').wait_for()
+                            self.assertEqual(self.draft(), baseline)
+                        release_body.set()
+                        self.page.wait_for_function('window.finishedOlderDraftErrors === 1')
+                        self.assertEqual(len(calls), 2)
+                        if latest_status == 200:
+                            self.assertEqual(state.inner_text(), '答案已暂存，可稍后继续填写')
+                            self.assertNotIn('is-error', state.get_attribute('class'))
+                            self.assertEqual(self.page.locator('[data-survey-flow]').get_attribute('data-draft-dirty'), 'false')
+                        else:
+                            self.assertEqual(state.inner_text(), '最新这次暂存失败，请重试。')
+                            self.assertIn('is-error', state.get_attribute('class'))
+                            self.assertEqual(self.field(0).input_value(), newest)
+                            self.field(0).fill('重试后保存的最新期待')
+                            self.wait_saved()
+                            self.assertEqual(self.draft()['answers']['q_' + self.question_ids[0]], '重试后保存的最新期待')
+                finally:
+                    release_body.set()
 
     def test_typing_during_slow_restore_preserves_new_input_and_restores_other_answers(self):
         saved = {'answers': {'q_' + self.question_ids[0]: '上次输入的期待',

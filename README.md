@@ -105,10 +105,10 @@ if (!(Test-Path .env)) { Copy-Item .env.example .env }
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-测试使用临时数据库，并在结束时清除测试数据。填写暂存、题目编辑、题库导航和错误返回等35项自动化界面测试使用后台无界面浏览器：Windows 使用已安装的 Microsoft Edge，不操纵当前桌面；Linux/macOS 需先执行 `python -m playwright install chromium` 安装测试浏览器。仅运行系统本身时只需 `requirements.txt`。
+测试使用临时数据库，并在结束时清除测试数据。填写暂存、题目编辑、题库导航和错误返回等36项自动化界面测试使用后台无界面浏览器：Windows 使用已安装的 Microsoft Edge，不操纵当前桌面；Linux/macOS 需先执行 `python -m playwright install chromium` 安装测试浏览器。仅运行系统本身时只需 `requirements.txt`。
 
 ## 最终验证记录
 
-最终完整回归执行于北京时间 2026-10-26 22:56:51 至 2026-10-26 23:05:04，Python 3.12.14、MongoDB 6.0.1。实际运行130项，失败0、错误0、跳过0，全部通过。各场景的步骤、输入、输出和结果见测试文档。
+最终完整回归执行于北京时间 2026-10-28 11:55:10 至 2026-10-28 12:04:36，Python 3.12.14、MongoDB 6.0.1。实际运行132项，失败0、错误0、跳过0，全部通过。各场景的步骤、输入、输出和结果见测试文档。
 
 执行 `python -m unittest discover -s tests -v` 可以重新运行整套测试，终端显示每项结果，失败时返回非零退出码。首次运行系统请注册账号并创建问卷，测试会自行创建隔离用户和数据库。

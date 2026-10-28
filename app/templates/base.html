@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='library.css', v='20261026e') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='colors.css', v='20261026c') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='catalog-review.css', v='20261025a') }}">
-  <script src="{{ url_for('static', filename='app.js', v='20261026b') }}" defer></script>
+  <script src="{{ url_for('static', filename='app.js', v='20261028a') }}" defer></script>
 </head>
 <body>
   {% if survey_list_context %}<template data-survey-list-context>{% for key,value in survey_list_context.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}</template>{% endif %}

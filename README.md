@@ -1,21 +1,21 @@
 # 在线问卷系统第二阶段
 
-本项目在[第一阶段代码](https://github.com/ctasr/online-survey-system-phase1/tree/8745aff8a830d74db0b01f0f6838742293afc98b)上继续修改。第二阶段在原仓库的 `phase2` 分支开发和提交，`main` 保留第一阶段原提交，不修改其文件或提交时间。请先切换到 `phase2` 分支，再按下文运行。第二阶段增加独立题目库、题目版本、共享、题库管理和跨问卷统计。已发布问卷中的题目与跳转规则固定，修改题目时创建新版本供后续问卷使用，已有问卷和答卷保持原样。完整变更及兼容性说明见 [第二阶段设计与变更](docs/第二阶段_设计与变更.md)。
+本项目基于[第一阶段版本](https://github.com/ctasr/online-survey-system-phase1/tree/8745aff8a830d74db0b01f0f6838742293afc98b)开发，在原有问卷创建、填写和统计功能上，增加独立题目库、题目版本、共享、题库管理和跨问卷统计。第二阶段源码位于本仓库的 `phase2` 分支。已发布问卷中的题目与跳转规则固定，修改题目时创建新版本供后续问卷使用，已有问卷和答卷保持原样。完整变更及兼容性说明见 [第二阶段设计与变更](docs/第二阶段_设计与变更.md)。
 
 `MONGO_DB_NAME` 默认仍为 `survey_phase1`，因此使用相同数据库配置时可读取第一阶段数据；题目库是新增集合，旧问卷不需要迁移才能继续使用。
 
 JSON 接口的请求格式、路径、状态码和独立 API 测试见 [API.md](API.md)。第二阶段测试步骤与实际结果见 [第二阶段测试用例与结果](docs/第二阶段_测试用例与结果.md)。
 
-## 提交内容
+## 文件说明
 
-| 要求 | 文件位置 |
+| 内容 | 文件位置 |
 | --- | --- |
 | 代码、MongoDB schema和配置 | app/、run.py、requirements.txt、.env.example、docs/MongoDB-schema.md；启动和配置方法见下文 |
 | 系统、数据库、API和关键逻辑说明 | 本文件、docs/第二阶段_设计与变更.md、docs/MongoDB-schema.md、API.md |
 | 测试用例 | tests/及docs/第二阶段_测试用例与结果.md，包含步骤、输入、预期输出、实际输出和结果 |
-| 项目完成报告 | 报告PDF单独通过水杉提交，包含九项报告内容、Prompt日志和AI使用说明 |
+| 项目完成报告 | PDF另行提交至课程平台，包含项目设计、测试结果和AI使用记录 |
 
-测试使用标准unittest运行，所需数据构造函数位于tests/campus_fixtures.py。`.env`、虚拟环境、数据库文件、编辑稿、原始日志和辅助截图不随代码提交。
+测试使用标准unittest运行，所需数据构造函数位于`tests/campus_fixtures.py`。
 
 系统包含账号、问卷管理、四类题目、条件跳转、填写暂存、提交与答卷查看，并提供独立题目版本、共享、题库及跨问卷统计。
 
@@ -26,7 +26,7 @@ JSON 接口的请求格式、路径、状态码和独立 API 测试见 [API.md](
 
 ## 启动
 
-使用Git下载第二阶段：`git clone --branch phase2 --single-branch https://github.com/ctasr/online-survey-system-phase1.git`。下载ZIP时也应确认当前分支为phase2；默认main是第一阶段。
+使用Git下载第二阶段：`git clone --branch phase2 --single-branch https://github.com/ctasr/online-survey-system-phase1.git`。下载ZIP时请选择`phase2`分支。
 
 在本文件所在目录打开 PowerShell，运行：
 
@@ -105,10 +105,10 @@ if (!(Test-Path .env)) { Copy-Item .env.example .env }
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-测试使用临时数据库，并在结束时清除测试数据。填写暂存、题目编辑、题库导航和错误返回等36项自动化界面测试使用后台无界面浏览器：Windows 使用已安装的 Microsoft Edge，不操纵当前桌面；Linux/macOS 需先执行 `python -m playwright install chromium` 安装测试浏览器。仅运行系统本身时只需 `requirements.txt`。
+测试使用临时数据库，并在结束时清除测试数据。填写暂存、题目编辑、题库导航和错误返回等36项自动化界面测试使用无界面浏览器。Windows 使用已安装的 Microsoft Edge，Linux/macOS 需先执行 `python -m playwright install chromium` 安装测试浏览器。仅运行系统本身时只需 `requirements.txt`。
 
-## 最终验证记录
+## 测试运行记录
 
-最终完整回归执行于北京时间 2026-10-28 11:55:10 至 2026-10-28 12:04:36，Python 3.12.14、MongoDB 6.0.1。实际运行132项，失败0、错误0、跳过0，全部通过。各场景的步骤、输入、输出和结果见测试文档。
+完整回归执行于北京时间 2026-10-28 11:55:10 至 2026-10-28 12:04:36，Python 3.12.14、MongoDB 6.0.1。实际运行132项，失败0、错误0、跳过0，全部通过。各场景的步骤、输入、输出和结果见测试文档。
 
 执行 `python -m unittest discover -s tests -v` 可以重新运行整套测试，终端显示每项结果，失败时返回非零退出码。首次运行系统请注册账号并创建问卷，测试会自行创建隔离用户和数据库。

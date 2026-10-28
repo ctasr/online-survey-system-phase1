@@ -139,9 +139,9 @@ print(status, surveys)
 
 保存字段包括 `revision`、`identity_mode`、`answers`；此处 answers 使用网页字段名 `q_<题目ID>`，多选为数组，其他为文本。与正式 /api/v1 提交中直接使用题目ID的键名不同。暂存只恢复输入，不代表答案已经通过正式校验，也不计入统计。超过容量返回413，错误格式返回400并保留旧暂存；客户端恢复失败先停止覆盖，重试成功后再合并输入。容量上限是HTTP请求体100000字节，适用于暂存负载而非对单个题目另加业务字数限制。
 
-## 最终 API 验证证据
+## API测试
 
-实际路由快照中共有32条 /api/v1 路由规则，含一条规则上的不同HTTP方法，不以页面数量代替接口数量。完整套件含 test_json_api.py 4项、test_json_api_http.py 1项、test_api_user_journeys.py 8项及test_csrf_boundaries.py 2项；每项内包含完整流程和多个响应断言，另外第二阶段题库专项用例也直接请求JSON接口。测试的步骤与输入在测试源码及测试文档中，结果列在测试文档中，运行脚本可重新生成逐项记录。/api/v1 错误返回JSON；普通网页路由不作相同格式保证。
+系统共有32条`/api/v1`路由规则，同一路径可以支持多个HTTP方法。完整套件含 test_json_api.py 4项、test_json_api_http.py 1项、test_api_user_journeys.py 8项及test_csrf_boundaries.py 2项；每项内包含完整流程和多个响应断言，另外第二阶段题库专项用例也直接请求JSON接口。测试的步骤与输入在测试源码及测试文档中，结果列在测试文档中，运行脚本可重新生成逐项记录。/api/v1 错误返回JSON；普通网页路由不作相同格式保证。
 
 暂存POST的请求体必须为JSON对象，answers必须显式提供且为对象；显式 `{"answers": {}}` 表示清空暂存答案。空数组、null、缺少answers或损坏JSON返回400，并保留原稿。
 
